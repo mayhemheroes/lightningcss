@@ -12,7 +12,8 @@ ADD . /parcel-css/
 
 # needed to fix bug with nightly version not parsing cargo.toml
 WORKDIR /parcel-css/
-RUN sed '/serde = \[\"smallvec\/serde\", \"cssparser\/serde\"\]/d' Cargo.toml > Cargo.toml
+RUN sed '/serde = \[\"smallvec\/serde\", \"cssparser\/serde\"\]/d' Cargo.toml > Cargo.toml2
+RUN mv Cargo.toml2 Cargo.toml
 
 WORKDIR /parcel-css/fuzz/
 
