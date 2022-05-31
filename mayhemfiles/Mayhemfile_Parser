@@ -1,0 +1,6 @@
+project: parsel-css
+target: parser
+duration: 90
+
+cmds:
+    - cmd: /parser
