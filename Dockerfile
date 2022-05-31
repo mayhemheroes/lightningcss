@@ -10,10 +10,11 @@ RUN cargo install cargo-fuzz
 ## Add source code to the build stage.
 ADD . /parcel-css/
 
-WORKDIR /parcel-css/fuzz/
-
 # needed to fix bug with nightly version not parsing cargo.toml
+WORKDIR /parcel-css/
 RUN sed '/serde = \[\"smallvec\/serde\", \"cssparser\/serde\"\]/d' Cargo.toml > Cargo.toml
+
+WORKDIR /parcel-css/fuzz/
 
 RUN cargo fuzz build
 
