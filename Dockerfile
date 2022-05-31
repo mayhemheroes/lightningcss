@@ -17,7 +17,7 @@ RUN mv Cargo.toml2 Cargo.toml
 
 WORKDIR /parcel-css/fuzz/
 
-RUN cargo fuzz build
+RUN cargo +nightly fuzz build
 
 FROM --platform=linux/amd64 rustlang/rust:nightly
 
