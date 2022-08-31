@@ -10,7 +10,6 @@ fuzz_target!(|data: &[u8]| {
 
             // Parse a style sheet from a string.
             match StyleSheet::parse(
-                "fuzz.css",
                 s,
                 ParserOptions::default()
             ) {

@@ -8,9 +8,11 @@ fuzz_target!(|data: &[u8]| {
                 StyleSheet, ParserOptions, MinifyOptions, PrinterOptions
             };
 
+            let mut opts = ParserOptions::default();
+            opts.filename = s.to_owned();
+
             // Parse a style sheet from a string.
             match StyleSheet::parse(
-                s,
                 r#"
                 .foo {
                   color: red;
@@ -20,7 +22,7 @@ fuzz_target!(|data: &[u8]| {
                   color: red;
                 }
                 "#,
-                ParserOptions::default()
+                opts
             ) {
                 Ok(mut stylesheet) => {
                     stylesheet.minify(MinifyOptions::default()).unwrap();
