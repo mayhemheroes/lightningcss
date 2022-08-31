@@ -615,7 +615,12 @@ impl<'i> PropertyHandler<'i> for MaskHandler<'i> {
     }
 
     match property {
-      Property::MaskImage(val, vp) => property!(images, val, vp),
+      Property::MaskImage(val, vp) => {
+        if Image::should_preserve_fallbacks(val, self.images.as_ref().map(|v| &v.0), context.targets) {
+          self.finalize(dest, context)
+        }
+        property!(images, val, vp)
+      }
       Property::MaskPosition(val, vp) => property!(positions, val, vp),
       Property::MaskSize(val, vp) => property!(sizes, val, vp),
       Property::MaskRepeat(val, vp) => property!(repeats, val, vp),
@@ -625,6 +630,9 @@ impl<'i> PropertyHandler<'i> for MaskHandler<'i> {
       Property::MaskMode(val) => self.modes = Some(val.clone()),
       Property::Mask(val, prefix) => {
         let images = val.iter().map(|b| b.image.clone()).collect();
+        if Image::should_preserve_fallbacks(&images, self.images.as_ref().map(|v| &v.0), context.targets) {
+          self.finalize(dest, context)
+        }
         maybe_flush!(images, &images, prefix);
 
         let positions = val.iter().map(|b| b.position.clone()).collect();
@@ -856,7 +864,11 @@ impl<'i> MaskHandler<'i> {
             // Match prefix of fallback. e.g. -webkit-linear-gradient
             // can only be used in -webkit-mask-image.
             // However, if mask-image is unprefixed, gradients can still be.
-            let mut p = fallback.iter().fold(prefix, |p, image| p & image.get_vendor_prefix());
+            let mut p = fallback
+              .iter()
+              .fold(VendorPrefix::empty(), |p, image| p | image.get_vendor_prefix())
+              - VendorPrefix::None
+              & prefix;
             if p.is_empty() {
               p = prefix;
             }
@@ -864,12 +876,16 @@ impl<'i> MaskHandler<'i> {
           }
         }
 
-        let p = images.iter().fold(prefix, |p, image| p & image.get_vendor_prefix());
-        if !p.is_empty() {
-          prefix = p;
+        let mut p = images
+          .iter()
+          .fold(VendorPrefix::empty(), |p, image| p | image.get_vendor_prefix())
+          - VendorPrefix::None
+          & prefix;
+        if p.is_empty() {
+          p = prefix;
         }
 
-        dest.push(Property::MaskImage(images, prefix));
+        dest.push(Property::MaskImage(images, p));
       }
     }
 

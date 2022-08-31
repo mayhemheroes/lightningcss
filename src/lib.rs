@@ -56,14 +56,18 @@ mod tests {
   use std::collections::HashMap;
 
   fn test(source: &str, expected: &str) {
-    let mut stylesheet = StyleSheet::parse("test.css", &source, ParserOptions::default()).unwrap();
+    test_with_options(source, expected, ParserOptions::default())
+  }
+
+  fn test_with_options<'i, 'o>(source: &'i str, expected: &'i str, options: ParserOptions<'o, 'i>) {
+    let mut stylesheet = StyleSheet::parse(&source, options).unwrap();
     stylesheet.minify(MinifyOptions::default()).unwrap();
     let res = stylesheet.to_css(PrinterOptions::default()).unwrap();
     assert_eq!(res.code, expected);
   }
 
   fn minify_test(source: &str, expected: &str) {
-    let mut stylesheet = StyleSheet::parse("test.css", &source, ParserOptions::default()).unwrap();
+    let mut stylesheet = StyleSheet::parse(&source, ParserOptions::default()).unwrap();
     stylesheet.minify(MinifyOptions::default()).unwrap();
     let res = stylesheet
       .to_css(PrinterOptions {
@@ -75,7 +79,7 @@ mod tests {
   }
 
   fn prefix_test(source: &str, expected: &str, targets: Browsers) {
-    let mut stylesheet = StyleSheet::parse("test.css", &source, ParserOptions::default()).unwrap();
+    let mut stylesheet = StyleSheet::parse(&source, ParserOptions::default()).unwrap();
     stylesheet
       .minify(MinifyOptions {
         targets: Some(targets),
@@ -92,7 +96,7 @@ mod tests {
   }
 
   fn attr_test(source: &str, expected: &str, minify: bool, targets: Option<Browsers>) {
-    let mut attr = StyleAttribute::parse(source).unwrap();
+    let mut attr = StyleAttribute::parse(source, ParserOptions::default()).unwrap();
     attr.minify(MinifyOptions {
       targets,
       ..MinifyOptions::default()
@@ -113,7 +117,6 @@ mod tests {
       ..Browsers::default()
     });
     let mut stylesheet = StyleSheet::parse(
-      "test.css",
       &source,
       ParserOptions {
         nesting: true,
@@ -138,7 +141,6 @@ mod tests {
 
   fn nesting_test_no_targets(source: &str, expected: &str) {
     let mut stylesheet = StyleSheet::parse(
-      "test.css",
       &source,
       ParserOptions {
         nesting: true,
@@ -159,9 +161,9 @@ mod tests {
     config: crate::css_modules::Config<'i>,
   ) {
     let mut stylesheet = StyleSheet::parse(
-      "test.css",
       &source,
       ParserOptions {
+        filename: "test.css".into(),
         css_modules: Some(config),
         ..ParserOptions::default()
       },
@@ -176,7 +178,6 @@ mod tests {
 
   fn custom_media_test(source: &str, expected: &str) {
     let mut stylesheet = StyleSheet::parse(
-      "test.css",
       &source,
       ParserOptions {
         custom_media: true,
@@ -198,7 +199,7 @@ mod tests {
   }
 
   fn error_test(source: &str, error: ParserError) {
-    let res = StyleSheet::parse("test.css", &source, ParserOptions::default());
+    let res = StyleSheet::parse(&source, ParserOptions::default());
     match res {
       Ok(_) => unreachable!(),
       Err(e) => assert_eq!(e.kind, error),
@@ -887,6 +888,43 @@ mod tests {
     prefix_test(
       r#"
       .foo {
+        border-block-width: 2px;
+      }
+    "#,
+      indoc! {r#"
+      .foo {
+        border-block-start-width: 2px;
+        border-block-end-width: 2px;
+      }
+    "#
+      },
+      Browsers {
+        safari: Some(13 << 16),
+        ..Browsers::default()
+      },
+    );
+
+    prefix_test(
+      r#"
+      .foo {
+        border-block-width: 2px;
+      }
+    "#,
+      indoc! {r#"
+      .foo {
+        border-block-width: 2px;
+      }
+    "#
+      },
+      Browsers {
+        safari: Some(15 << 16),
+        ..Browsers::default()
+      },
+    );
+
+    prefix_test(
+      r#"
+      .foo {
         border-inline-start: 2px solid red;
       }
     "#,
@@ -1033,6 +1071,82 @@ mod tests {
       .bar:is(:lang(ae), :lang(ar), :lang(arc), :lang(bcc), :lang(bqi), :lang(ckb), :lang(dv), :lang(fa), :lang(glk), :lang(he), :lang(ku), :lang(mzn), :lang(nqo), :lang(pnb), :lang(ps), :lang(sd), :lang(ug), :lang(ur), :lang(yi)) {
         border-left: 1px solid #000;
         border-right: 1px dotted gray;
+      }
+    "#
+      },
+      Browsers {
+        safari: Some(8 << 16),
+        ..Browsers::default()
+      },
+    );
+
+    prefix_test(
+      r#"
+      .foo {
+        border-inline-width: 2px;
+      }
+    "#,
+      indoc! {r#"
+      .foo {
+        border-left-width: 2px;
+        border-right-width: 2px;
+      }
+    "#
+      },
+      Browsers {
+        safari: Some(8 << 16),
+        ..Browsers::default()
+      },
+    );
+
+    prefix_test(
+      r#"
+      .foo {
+        border-inline-width: 2px;
+      }
+    "#,
+      indoc! {r#"
+      .foo {
+        border-left-width: 2px;
+        border-right-width: 2px;
+      }
+    "#
+      },
+      Browsers {
+        safari: Some(8 << 16),
+        ..Browsers::default()
+      },
+    );
+
+    prefix_test(
+      r#"
+      .foo {
+        border-inline-style: solid;
+      }
+    "#,
+      indoc! {r#"
+      .foo {
+        border-left-style: solid;
+        border-right-style: solid;
+      }
+    "#
+      },
+      Browsers {
+        safari: Some(8 << 16),
+        ..Browsers::default()
+      },
+    );
+
+    prefix_test(
+      r#"
+      .foo {
+        border-inline-color: red;
+      }
+    "#,
+      indoc! {r#"
+      .foo {
+        border-left-color: red;
+        border-right-color: red;
       }
     "#
       },
@@ -1611,6 +1725,22 @@ mod tests {
       indoc! {r#"
       .foo {
         border: 1px solid red;
+      }
+    "#
+      },
+    );
+
+    test(
+      r#"
+      .foo {
+        border: 1px solid red;
+        border-image: var(--border-image);
+      }
+    "#,
+      indoc! {r#"
+      .foo {
+        border: 1px solid red;
+        border-image: var(--border-image);
       }
     "#
       },
@@ -4864,7 +4994,7 @@ mod tests {
     "#,
       indoc! {r#"
       .foo {
-        font-family: Helvetica, system-ui, AppleSystem, BlinkMacSystemFont, Segoe UI, Roboto, Noto Sans, Ubuntu, Cantarell, Helvetica Neue, sans-serif;
+        font-family: Helvetica, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Noto Sans, Ubuntu, Cantarell, Helvetica Neue, sans-serif;
       }
     "#
       },
@@ -4882,12 +5012,30 @@ mod tests {
     "#,
       indoc! {r#"
       .foo {
-        font: 100% / 1.5 Helvetica, system-ui, AppleSystem, BlinkMacSystemFont, Segoe UI, Roboto, Noto Sans, Ubuntu, Cantarell, Helvetica Neue, sans-serif;
+        font: 100% / 1.5 Helvetica, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Noto Sans, Ubuntu, Cantarell, Helvetica Neue, sans-serif;
       }
     "#
       },
       Browsers {
         safari: Some(8 << 16),
+        ..Browsers::default()
+      },
+    );
+
+    prefix_test(
+      r#"
+      .foo {
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+      }
+    "#,
+      indoc! {r#"
+      .foo {
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Noto Sans, Ubuntu, Cantarell, Helvetica Neue, Arial, sans-serif, Apple Color Emoji, Segoe UI Emoji, Segoe UI Symbol, Noto Color Emoji;
+      }
+    "#
+      },
+      Browsers {
+        firefox: Some(91 << 16),
         ..Browsers::default()
       },
     );
@@ -5230,6 +5378,18 @@ mod tests {
         ..Browsers::default()
       },
     );
+
+    minify_test(".foo::cue {color: red}", ".foo::cue{color:red}");
+    minify_test(".foo::cue-region {color: red}", ".foo::cue-region{color:red}");
+    minify_test(".foo::cue(b) {color: red}", ".foo::cue(b){color:red}");
+    minify_test(".foo::cue-region(b) {color: red}", ".foo::cue-region(b){color:red}");
+    minify_test(
+      "::cue(v[voice='active']) {color: yellow;}",
+      "::cue(v[voice=active]){color:#ff0}",
+    );
+    minify_test(":foo(bar) { color: yellow }", ":foo(bar){color:#ff0}");
+    minify_test("::foo(bar) { color: yellow }", "::foo(bar){color:#ff0}");
+    minify_test("::foo(*) { color: yellow }", "::foo(*){color:#ff0}");
   }
 
   #[test]
@@ -5872,6 +6032,138 @@ mod tests {
       ".foo { left: calc(50% - 100px + clamp(0px, calc(50vw - 50px), 100px)) }",
       ".foo{left:calc(50% - 100px + clamp(0px,50vw - 50px,100px))}",
     );
+    minify_test(
+      ".foo { left: calc(10px + min(10px, 1rem) + max(2px, 1vw)) }",
+      ".foo{left:calc(10px + min(10px,1rem) + max(2px,1vw))}",
+    );
+    minify_test(".foo { width: round(22px, 5px) }", ".foo{width:20px}");
+    minify_test(".foo { width: round(nearest, 22px, 5px) }", ".foo{width:20px}");
+    minify_test(".foo { width: round(down, 22px, 5px) }", ".foo{width:20px}");
+    minify_test(".foo { width: round(to-zero, 22px, 5px) }", ".foo{width:20px}");
+    minify_test(".foo { width: round(up, 22px, 5px) }", ".foo{width:25px}");
+    minify_test(".foo { width: round(23px, 5px) }", ".foo{width:25px}");
+    minify_test(".foo { width: round(nearest, 23px, 5px) }", ".foo{width:25px}");
+    minify_test(".foo { width: round(down, 23px, 5px) }", ".foo{width:20px}");
+    minify_test(".foo { width: round(to-zero, 23px, 5px) }", ".foo{width:20px}");
+    minify_test(".foo { width: round(up, 23px, 5px) }", ".foo{width:25px}");
+    minify_test(".foo { width: round(22px, 5vw) }", ".foo{width:round(22px,5vw)}");
+    minify_test(".foo { rotate: round(22deg, 5deg) }", ".foo{rotate:20deg}");
+    minify_test(".foo { rotate: round(22deg, 5deg) }", ".foo{rotate:20deg}");
+    minify_test(
+      ".foo { transition-duration: round(22ms, 5ms) }",
+      ".foo{transition-duration:20ms}",
+    );
+    minify_test(".foo { margin: round(to-zero, -23px, 5px) }", ".foo{margin:-20px}");
+    minify_test(".foo { margin: round(nearest, -23px, 5px) }", ".foo{margin:-25px}");
+    minify_test(".foo { margin: calc(10px * round(22, 5)) }", ".foo{margin:200px}");
+    minify_test(".foo { width: rem(18px, 5px) }", ".foo{width:3px}");
+    minify_test(".foo { width: rem(-18px, 5px) }", ".foo{width:-3px}");
+    minify_test(".foo { width: rem(18px, 5vw) }", ".foo{width:rem(18px,5vw)}");
+    minify_test(".foo { rotate: rem(-140deg, -90deg) }", ".foo{rotate:-50deg}");
+    minify_test(".foo { rotate: rem(140deg, -90deg) }", ".foo{rotate:50deg}");
+    minify_test(".foo { width: calc(10px * rem(18, 5)) }", ".foo{width:30px}");
+    minify_test(".foo { width: mod(18px, 5px) }", ".foo{width:3px}");
+    minify_test(".foo { width: mod(-18px, 5px) }", ".foo{width:2px}");
+    minify_test(".foo { rotate: mod(-140deg, -90deg) }", ".foo{rotate:-50deg}");
+    minify_test(".foo { rotate: mod(140deg, -90deg) }", ".foo{rotate:-40deg}");
+    minify_test(".foo { width: mod(18px, 5vw) }", ".foo{width:mod(18px,5vw)}");
+    minify_test(
+      ".foo { transform: rotateX(mod(140deg, -90deg)) rotateY(rem(140deg, -90deg)) }",
+      ".foo{transform:rotateX(-40deg)rotateY(50deg)}",
+    );
+    minify_test(".foo { width: calc(10px * mod(18, 5)) }", ".foo{width:30px}");
+  }
+
+  #[test]
+  fn test_trig() {
+    minify_test(".foo { width: calc(2px * pi); }", ".foo{width:6.28319px}");
+    minify_test(".foo { width: calc(2px / pi); }", ".foo{width:.63662px}");
+    // minify_test(
+    //   ".foo { width: calc(2px * infinity); }",
+    //   ".foo{width:calc(2px*infinity)}",
+    // );
+    // minify_test(
+    //   ".foo { width: calc(2px * -infinity); }",
+    //   ".foo{width:calc(2px*-infinity)}",
+    // );
+    minify_test(".foo { width: calc(100px * sin(45deg))", ".foo{width:70.7107px}");
+    minify_test(".foo { width: calc(100px * sin(.125turn))", ".foo{width:70.7107px}");
+    minify_test(
+      ".foo { width: calc(100px * sin(3.14159265 / 4))",
+      ".foo{width:70.7107px}",
+    );
+    minify_test(".foo { width: calc(100px * sin(pi / 4))", ".foo{width:70.7107px}");
+    minify_test(
+      ".foo { width: calc(100px * sin(22deg + 23deg))",
+      ".foo{width:70.7107px}",
+    );
+
+    minify_test(".foo { width: calc(2px * cos(45deg))", ".foo{width:1.41421px}");
+    minify_test(".foo { width: calc(2px * tan(45deg))", ".foo{width:2px}");
+
+    minify_test(".foo { rotate: asin(sin(45deg))", ".foo{rotate:45deg}");
+    minify_test(".foo { rotate: asin(1)", ".foo{rotate:90deg}");
+    minify_test(".foo { rotate: asin(-1)", ".foo{rotate:-90deg}");
+    minify_test(".foo { rotate: asin(0.5)", ".foo{rotate:30deg}");
+    minify_test(".foo { rotate: asin(45deg)", ".foo{rotate:asin(45deg)}"); // invalid
+    minify_test(".foo { rotate: asin(-20)", ".foo{rotate:asin(-20)}"); // evaluates to NaN
+    minify_test(".foo { width: asin(sin(45deg))", ".foo{width:asin(sin(45deg))}"); // invalid
+
+    minify_test(".foo { rotate: acos(cos(45deg))", ".foo{rotate:45deg}");
+    minify_test(".foo { rotate: acos(-1)", ".foo{rotate:180deg}");
+    minify_test(".foo { rotate: acos(0)", ".foo{rotate:90deg}");
+    minify_test(".foo { rotate: acos(1)", ".foo{rotate:none}");
+    minify_test(".foo { rotate: acos(45deg)", ".foo{rotate:acos(45deg)}"); // invalid
+    minify_test(".foo { rotate: acos(-20)", ".foo{rotate:acos(-20)}"); // evaluates to NaN
+
+    minify_test(".foo { rotate: atan(tan(45deg))", ".foo{rotate:45deg}");
+    minify_test(".foo { rotate: atan(1)", ".foo{rotate:45deg}");
+    minify_test(".foo { rotate: atan(0)", ".foo{rotate:none}");
+    minify_test(".foo { rotate: atan(45deg)", ".foo{rotate:atan(45deg)}"); // invalid
+
+    minify_test(".foo { rotate: atan2(1px, -1px)", ".foo{rotate:135deg}");
+    minify_test(".foo { rotate: atan2(1vw, -1vw)", ".foo{rotate:135deg}");
+    minify_test(".foo { rotate: atan2(1, -1)", ".foo{rotate:135deg}");
+    minify_test(".foo { rotate: atan2(1ms, -1ms)", ".foo{rotate:135deg}");
+    minify_test(".foo { rotate: atan2(1%, -1%)", ".foo{rotate:135deg}");
+    minify_test(".foo { rotate: atan2(1deg, -1deg)", ".foo{rotate:135deg}");
+    minify_test(".foo { rotate: atan2(1cm, 1mm)", ".foo{rotate:84.2894deg}");
+    minify_test(".foo { rotate: atan2(0, -1)", ".foo{rotate:180deg}");
+    minify_test(".foo { rotate: atan2(-1, 1)", ".foo{rotate:-45deg}");
+    // incompatible units
+    minify_test(".foo { rotate: atan2(1px, -1vw)", ".foo{rotate:atan2(1px,-1vw)}");
+  }
+
+  #[test]
+  fn test_exp() {
+    minify_test(".foo { width: hypot()", ".foo{width:hypot()}");
+    minify_test(".foo { width: hypot(1px)", ".foo{width:1px}");
+    minify_test(".foo { width: hypot(1px, 2px)", ".foo{width:2.23607px}");
+    minify_test(".foo { width: hypot(1px, 2px, 3px)", ".foo{width:3.74166px}");
+    minify_test(".foo { width: hypot(1px, 2vw)", ".foo{width:hypot(1px,2vw)}");
+    minify_test(".foo { width: hypot(1px, 2px, 3vw)", ".foo{width:hypot(1px,2px,3vw)}");
+    minify_test(".foo { width: calc(100px * hypot(3, 4))", ".foo{width:500px}");
+    minify_test(".foo { width: calc(1px * pow(2, sqrt(100))", ".foo{width:1024px}");
+    minify_test(".foo { width: calc(100px * pow(2, pow(2, 2)", ".foo{width:1600px}");
+    minify_test(".foo { width: calc(1px * log(1))", ".foo{width:0}");
+    minify_test(".foo { width: calc(1px * log(10, 10))", ".foo{width:1px}");
+    minify_test(".foo { width: calc(1px * exp(0))", ".foo{width:1px}");
+    minify_test(".foo { width: calc(1px * log(e))", ".foo{width:1px}");
+    minify_test(".foo { width: calc(1px * (e - exp(1)))", ".foo{width:0}");
+    minify_test(
+      ".foo { width: calc(1px * (exp(log(1) + exp(0)*2))",
+      ".foo{width:7.38906px}",
+    );
+  }
+
+  #[test]
+  fn test_sign() {
+    minify_test(".foo { width: abs(1px)", ".foo{width:1px}");
+    minify_test(".foo { width: abs(-1px)", ".foo{width:1px}");
+    minify_test(".foo { width: abs(1%)", ".foo{width:abs(1%)}"); // spec says percentages must be against resolved value
+
+    minify_test(".foo { width: calc(10px * sign(-1vw)", ".foo{width:-10px}");
+    minify_test(".foo { width: calc(10px * sign(1%)", ".foo{width:calc(10px*sign(1%))}");
   }
 
   #[test]
@@ -6328,6 +6620,77 @@ mod tests {
       "#,
       "\n",
     );
+
+    prefix_test(
+      r#"
+      @media (width > calc(1px + 1rem)) {
+        .foo { color: yellow; }
+      }
+      "#,
+      indoc! { r#"
+        @media (min-width: calc(1.001px + 1rem)) {
+          .foo {
+            color: #ff0;
+          }
+        }
+      "#},
+      Browsers {
+        chrome: Some(85 << 16),
+        ..Browsers::default()
+      },
+    );
+    prefix_test(
+      r#"
+      @media (width > max(10px, 1rem)) {
+        .foo { color: yellow; }
+      }
+      "#,
+      indoc! { r#"
+        @media (min-width: calc(max(10px, 1rem) + .001px)) {
+          .foo {
+            color: #ff0;
+          }
+        }
+      "#},
+      Browsers {
+        chrome: Some(85 << 16),
+        ..Browsers::default()
+      },
+    );
+  }
+
+  #[test]
+  fn test_merge_layers() {
+    test(
+      r#"
+      @layer foo {
+        .foo {
+          color: red;
+        }
+      }
+      @layer foo {
+        .foo {
+          background: #fff;
+        }
+
+        .baz {
+          color: #fff;
+        }
+      }
+      "#,
+      indoc! {r#"
+      @layer foo {
+        .foo {
+          color: red;
+          background: #fff;
+        }
+
+        .baz {
+          color: #fff;
+        }
+      }
+    "#},
+    );
   }
 
   #[test]
@@ -6442,7 +6805,69 @@ mod tests {
       }
     "#},
     );
-
+    test(
+      r#"
+      .foo {
+        background: red;
+      }
+      .bar {
+        background: red;
+      }
+      .foo {
+        color: green;
+      }
+      .bar {
+        color: green;
+      }
+    "#,
+      indoc! {r#"
+      .foo, .bar {
+        color: green;
+        background: red;
+      }
+    "#},
+    );
+    test(
+      r#"
+      .foo, .bar {
+        background: red;
+      }
+      .foo {
+        color: green;
+      }
+      .bar {
+        color: green;
+      }
+    "#,
+      indoc! {r#"
+      .foo, .bar {
+        color: green;
+        background: red;
+      }
+    "#},
+    );
+    test(
+      r#"
+      .foo {
+        background: red;
+      }
+      .foo {
+        color: green;
+      }
+      .bar {
+        background: red;
+      }
+      .bar {
+        color: green;
+      }
+    "#,
+      indoc! {r#"
+      .foo, .bar {
+        color: green;
+        background: red;
+      }
+    "#},
+    );
     test(
       r#"
       [foo="bar"] {
@@ -6791,6 +7216,146 @@ mod tests {
         ie: Some(10 << 16),
         ..Browsers::default()
       },
+    );
+  }
+
+  #[test]
+  fn test_merge_media_rules() {
+    test(
+      r#"
+      @media (hover) {
+        .foo {
+          color: red;
+        }
+      }
+      @media (hover) {
+        .foo {
+          background: #fff;
+        }
+
+        .baz {
+          color: #fff;
+        }
+      }
+      "#,
+      indoc! {r#"
+      @media (hover) {
+        .foo {
+          color: red;
+          background: #fff;
+        }
+
+        .baz {
+          color: #fff;
+        }
+      }
+    "#},
+    );
+
+    test(
+      r#"
+      @media (hover) {
+        .foo {
+          color: red;
+        }
+      }
+      @media (min-width: 250px) {
+        .foo {
+          background: #fff;
+        }
+
+        .baz {
+          color: #fff;
+        }
+      }
+      "#,
+      indoc! {r#"
+      @media (hover) {
+        .foo {
+          color: red;
+        }
+      }
+      
+      @media (min-width: 250px) {
+        .foo {
+          background: #fff;
+        }
+
+        .baz {
+          color: #fff;
+        }
+      }
+    "#},
+    );
+  }
+
+  #[test]
+  fn test_merge_supports() {
+    test(
+      r#"
+      @supports (flex: 1) {
+        .foo {
+          color: red;
+        }
+      }
+      @supports (flex: 1) {
+        .foo {
+          background: #fff;
+        }
+
+        .baz {
+          color: #fff;
+        }
+      }
+      "#,
+      indoc! {r#"
+      @supports (flex: 1) {
+        .foo {
+          color: red;
+          background: #fff;
+        }
+
+        .baz {
+          color: #fff;
+        }
+      }
+    "#},
+    );
+
+    test(
+      r#"
+      @supports (flex: 1) {
+        .foo {
+          color: red;
+        }
+      }
+      @supports (display: grid) {
+        .foo {
+          background: #fff;
+        }
+
+        .baz {
+          color: #fff;
+        }
+      }
+      "#,
+      indoc! {r#"
+      @supports (flex: 1) {
+        .foo {
+          color: red;
+        }
+      }
+      
+      @supports (display: grid) {
+        .foo {
+          background: #fff;
+        }
+
+        .baz {
+          color: #fff;
+        }
+      }
+    "#},
     );
   }
 
@@ -8877,34 +9442,75 @@ mod tests {
     );
     minify_test("@font-face {src: local(Test);}", "@font-face{src:local(Test)}");
     minify_test("@font-face {src: local(Foo Bar);}", "@font-face{src:local(Foo Bar)}");
+
     minify_test(
       "@font-face {src: url(\"test.woff\") format(woff);}",
       "@font-face{src:url(test.woff)format(\"woff\")}",
     );
     minify_test(
-      "@font-face {src: url(\"test.woff\") format(woff), url(test.ttf) format(truetype);}",
-      "@font-face{src:url(test.woff)format(\"woff\"),url(test.ttf)format(\"truetype\")}",
+      "@font-face {src: url(\"test.ttc\") format(collection), url(test.ttf) format(truetype);}",
+      "@font-face{src:url(test.ttc)format(\"collection\"),url(test.ttf)format(\"truetype\")}",
     );
     minify_test(
-      "@font-face {src: url(\"test.woff\") format(woff supports features(opentype));}",
-      "@font-face{src:url(test.woff)format(\"woff\" supports features(opentype))}",
+      "@font-face {src: url(\"test.otf\") format(opentype) tech(feature-aat);}",
+      "@font-face{src:url(test.otf)format(\"opentype\")tech(feature-aat)}",
     );
     minify_test(
-      "@font-face {src: url(\"test.woff\") format(woff supports color(COLRv1));}",
-      "@font-face{src:url(test.woff)format(\"woff\" supports color(colrv1))}",
+      "@font-face {src: url(\"test.woff\") format(woff) tech(color-colrv1);}",
+      "@font-face{src:url(test.woff)format(\"woff\")tech(color-colrv1)}",
     );
     minify_test(
-      "@font-face {src: url(\"test.woff\") format(woff supports variations);}",
-      "@font-face{src:url(test.woff)format(\"woff\" supports variations)}",
+      "@font-face {src: url(\"test.woff2\") format(woff2) tech(variations);}",
+      "@font-face{src:url(test.woff2)format(\"woff2\")tech(variations)}",
     );
     minify_test(
-      "@font-face {src: url(\"test.woff\") format(woff supports palettes);}",
-      "@font-face{src:url(test.woff)format(\"woff\" supports palettes)}",
+      "@font-face {src: url(\"test.woff\") format(woff) tech(palettes);}",
+      "@font-face{src:url(test.woff)format(\"woff\")tech(palettes)}",
+    );
+    // multiple tech
+    minify_test(
+      "@font-face {src: url(\"test.woff\") format(woff) tech(feature-opentype, color-sbix);}",
+      "@font-face{src:url(test.woff)format(\"woff\")tech(feature-opentype,color-sbix)}",
     );
     minify_test(
-      "@font-face {src: url(\"test.woff\") format(woff supports features(opentype) color(sbix));}",
-      "@font-face{src:url(test.woff)format(\"woff\" supports features(opentype) color(sbix))}",
+      "@font-face {src: url(\"test.woff\")   format(woff)    tech(incremental, color-svg, feature-graphite, feature-aat);}",
+      "@font-face{src:url(test.woff)format(\"woff\")tech(incremental,color-svg,feature-graphite,feature-aat)}",
     );
+    // format() function must precede tech() if both are present
+    minify_test(
+      "@font-face {src: url(\"foo.ttf\") format(opentype) tech(color-colrv1);}",
+      "@font-face{src:url(foo.ttf)format(\"opentype\")tech(color-colrv1)}",
+    );
+    // only have tech is valid
+    minify_test(
+      "@font-face {src: url(\"foo.ttf\") tech(color-SVG);}",
+      "@font-face{src:url(foo.ttf)tech(color-svg)}",
+    );
+    // CGQAQ: if tech and format both presence, order is matter, tech before format is invalid
+    // but now just return raw token, we don't have strict mode yet.
+    // ref: https://github.com/parcel-bundler/parcel-css/pull/255#issuecomment-1219049998
+    minify_test(
+      "@font-face {src: url(\"foo.ttf\") tech(palettes  color-colrv0  variations) format(opentype);}",
+      "@font-face{src:url(foo.ttf) tech(palettes color-colrv0 variations)format(opentype)}",
+    );
+    // TODO(CGQAQ): make this test pass when we have strict mode
+    // ref: https://github.com/web-platform-tests/wpt/blob/9f8a6ccc41aa725e8f51f4f096f686313bb88d8d/css/css-fonts/parsing/font-face-src-tech.html#L45
+    // error_test(
+    //   "@font-face {src: url(\"foo.ttf\") tech(feature-opentype) format(opentype);}",
+    //   ParserError::AtRuleBodyInvalid,
+    // );
+    // error_test(
+    //   "@font-face {src: url(\"foo.ttf\") tech();}",
+    //   ParserError::AtRuleBodyInvalid,
+    // );
+    // error_test(
+    //   "@font-face {src: url(\"foo.ttf\") tech(\"feature-opentype\");}",
+    //   ParserError::AtRuleBodyInvalid,
+    // );
+    // error_test(
+    //   "@font-face {src: url(\"foo.ttf\") tech(\"color-colrv0\");}",
+    //   ParserError::AtRuleBodyInvalid,
+    // );
     minify_test(
       "@font-face {src: local(\"\") url(\"test.woff\");}",
       "@font-face{src:local(\"\")url(test.woff)}",
@@ -10825,6 +11431,44 @@ mod tests {
   }
 
   #[test]
+  fn test_break() {
+    prefix_test(
+      r#"
+      .foo {
+        box-decoration-break: clone;
+      }
+    "#,
+      indoc! {r#"
+      .foo {
+        -webkit-box-decoration-break: clone;
+        box-decoration-break: clone;
+      }
+    "#},
+      Browsers {
+        safari: Some(15 << 16),
+        ..Browsers::default()
+      },
+    );
+
+    prefix_test(
+      r#"
+      .foo {
+        box-decoration-break: clone;
+      }
+    "#,
+      indoc! {r#"
+      .foo {
+        box-decoration-break: clone;
+      }
+    "#},
+      Browsers {
+        firefox: Some(95 << 16),
+        ..Browsers::default()
+      },
+    );
+  }
+
+  #[test]
   fn test_position() {
     test(
       r#"
@@ -11616,17 +12260,36 @@ mod tests {
 
   #[test]
   fn test_image_set() {
+    // Spec: https://drafts.csswg.org/css-images-4/#image-set-notation
+    // WPT: https://github.com/web-platform-tests/wpt/blob/master/css/css-images/image-set/image-set-parsing.html
+    // test image-set(<string>)
     minify_test(
       ".foo { background: image-set(\"foo.png\" 2x, url(bar.png) 1x) }",
-      ".foo{background:image-set(\"foo.png\" 2x,\"bar.png\")}",
+      ".foo{background:image-set(\"foo.png\" 2x,\"bar.png\" 1x)}",
     );
+
+    // test image-set(type(<string>))
     minify_test(
       ".foo { background: image-set('foo.webp' type('webp'), url(foo.jpg)) }",
-      ".foo{background:image-set(\"foo.webp\" type(\"webp\"),\"foo.jpg\")}",
+      ".foo{background:image-set(\"foo.webp\" 1x type(\"webp\"),\"foo.jpg\" 1x)}",
     );
     minify_test(
+      ".foo { background: image-set('foo.avif' 2x type('image/avif'), url(foo.png)) }",
+      ".foo{background:image-set(\"foo.avif\" 2x type(\"image/avif\"),\"foo.png\" 1x)}",
+    );
+    minify_test(
+      ".foo { background: image-set(url('example.png') 3x type('image/png')) }",
+      ".foo{background:image-set(\"example.png\" 3x type(\"image/png\"))}",
+    );
+
+    minify_test(
+      ".foo { background: image-set(url(example.png) type('image/png') 1x) }",
+      ".foo{background:image-set(\"example.png\" 1x type(\"image/png\"))}",
+    );
+
+    minify_test(
       ".foo { background: -webkit-image-set(url(\"foo.png\") 2x, url(bar.png) 1x) }",
-      ".foo{background:-webkit-image-set(url(foo.png) 2x,url(bar.png))}",
+      ".foo{background:-webkit-image-set(url(foo.png) 2x,url(bar.png) 1x)}",
     );
 
     test(
@@ -11638,8 +12301,22 @@ mod tests {
     "#,
       indoc! {r#"
       .foo {
-        background: -webkit-image-set(url("foo.png") 2x, url("bar.png"));
-        background: image-set("foo.png" 2x, "bar.png");
+        background: -webkit-image-set(url("foo.png") 2x, url("bar.png") 1x);
+        background: image-set("foo.png" 2x, "bar.png" 1x);
+      }
+    "#},
+    );
+
+    // test image-set(<gradient>)
+    test(
+      r#"
+      .foo {
+        background: image-set(linear-gradient(cornflowerblue, white) 1x, url("detailed-gradient.png") 3x);
+      }
+    "#,
+      indoc! {r#"
+      .foo {
+        background: image-set(linear-gradient(#6495ed, #fff) 1x, "detailed-gradient.png" 3x);
       }
     "#},
     );
@@ -11652,8 +12329,8 @@ mod tests {
     "#,
       indoc! {r#"
       .foo {
-        background: -webkit-image-set(url("foo.png") 2x, url("bar.png"));
-        background: image-set("foo.png" 2x, "bar.png");
+        background: -webkit-image-set(url("foo.png") 2x, url("bar.png") 1x);
+        background: image-set("foo.png" 2x, "bar.png" 1x);
       }
     "#},
       Browsers {
@@ -11672,7 +12349,7 @@ mod tests {
     "#,
       indoc! {r#"
       .foo {
-        background: image-set("foo.png" 2x, "bar.png");
+        background: image-set("foo.png" 2x, "bar.png" 1x);
       }
     "#},
       Browsers {
@@ -11689,7 +12366,7 @@ mod tests {
     "#,
       indoc! {r#"
       .foo {
-        background: -webkit-image-set(url("foo.png") 2x, url("bar.png"));
+        background: -webkit-image-set(url("foo.png") 2x, url("bar.png") 1x);
       }
     "#},
       Browsers {
@@ -11697,6 +12374,70 @@ mod tests {
         ..Browsers::default()
       },
     );
+
+    for property in &[
+      "background",
+      "background-image",
+      "border-image-source",
+      "border-image",
+      "border-image-source",
+      "-webkit-mask-image",
+      "-webkit-mask",
+      "list-style-image",
+      "list-style",
+    ] {
+      prefix_test(
+        &format!(
+          r#"
+        .foo {{
+          {}: url(foo.png);
+          {}: image-set(url("foo.png") 2x, url(bar.png) 1x);
+        }}
+      "#,
+          property, property
+        ),
+        &format!(
+          indoc! {r#"
+        .foo {{
+          {}: url("foo.png");
+          {}: -webkit-image-set(url("foo.png") 2x, url("bar.png") 1x);
+          {}: image-set("foo.png" 2x, "bar.png" 1x);
+        }}
+      "#},
+          property, property, property
+        ),
+        Browsers {
+          ie: Some(11 << 16),
+          chrome: Some(95 << 16),
+          ..Browsers::default()
+        },
+      );
+
+      prefix_test(
+        &format!(
+          r#"
+        .foo {{
+          {}: url(foo.png);
+          {}: image-set(url("foo.png") 2x, url(bar.png) 1x);
+        }}
+      "#,
+          property, property
+        ),
+        &format!(
+          indoc! {r#"
+        .foo {{
+          {}: -webkit-image-set(url("foo.png") 2x, url("bar.png") 1x);
+          {}: image-set("foo.png" 2x, "bar.png" 1x);
+        }}
+      "#},
+          property, property
+        ),
+        Browsers {
+          chrome: Some(95 << 16),
+          ..Browsers::default()
+        },
+      );
+    }
   }
 
   #[test]
@@ -12243,6 +12984,159 @@ mod tests {
         chrome: Some(90 << 16),
         ..Browsers::default()
       },
+    );
+
+    prefix_test(
+      r#"
+      .foo {
+        --a: rgb(0 0 0 / var(--alpha));
+        --b: rgb(50% 50% 50% / var(--alpha));
+        --c: rgb(var(--x) 0 0);
+        --d: rgb(0 var(--x) 0);
+        --e: rgb(0 0 var(--x));
+        --f: rgb(var(--x) 0 0 / var(--alpha));
+        --g: rgb(0 var(--x) 0 / var(--alpha));
+        --h: rgb(0 0 var(--x) / var(--alpha));
+        --i: rgb(none 0 0 / var(--alpha));
+      }
+      "#,
+      indoc! { r#"
+        .foo {
+          --a: rgba(0, 0, 0, var(--alpha));
+          --b: rgba(128, 128, 128, var(--alpha));
+          --c: rgb(var(--x) 0 0);
+          --d: rgb(0 var(--x) 0);
+          --e: rgb(0 0 var(--x));
+          --f: rgb(var(--x) 0 0 / var(--alpha));
+          --g: rgb(0 var(--x) 0 / var(--alpha));
+          --h: rgb(0 0 var(--x) / var(--alpha));
+          --i: rgb(none 0 0 / var(--alpha));
+        }
+      "#},
+      Browsers {
+        safari: Some(11 << 16),
+        ..Browsers::default()
+      },
+    );
+
+    prefix_test(
+      r#"
+      .foo {
+        --a: rgb(0 0 0 / var(--alpha));
+        --b: rgb(50% 50% 50% / var(--alpha));
+        --c: rgb(var(--x) 0 0);
+        --d: rgb(0 var(--x) 0);
+        --e: rgb(0 0 var(--x));
+        --f: rgb(var(--x) 0 0 / var(--alpha));
+        --g: rgb(0 var(--x) 0 / var(--alpha));
+        --h: rgb(0 0 var(--x) / var(--alpha));
+        --i: rgb(none 0 0 / var(--alpha));
+      }
+      "#,
+      indoc! { r#"
+        .foo {
+          --a: rgb(0 0 0 / var(--alpha));
+          --b: rgb(128 128 128 / var(--alpha));
+          --c: rgb(var(--x) 0 0);
+          --d: rgb(0 var(--x) 0);
+          --e: rgb(0 0 var(--x));
+          --f: rgb(var(--x) 0 0 / var(--alpha));
+          --g: rgb(0 var(--x) 0 / var(--alpha));
+          --h: rgb(0 0 var(--x) / var(--alpha));
+          --i: rgb(none 0 0 / var(--alpha));
+        }
+      "#},
+      Browsers {
+        safari: Some(13 << 16),
+        ..Browsers::default()
+      },
+    );
+
+    prefix_test(
+      r#"
+      .foo {
+        --a: hsl(270 100% 50% / var(--alpha));
+        --b: hsl(var(--x) 0 0);
+        --c: hsl(0 var(--x) 0);
+        --d: hsl(0 0 var(--x));
+        --e: hsl(var(--x) 0 0 / var(--alpha));
+        --f: hsl(0 var(--x) 0 / var(--alpha));
+        --g: hsl(0 0 var(--x) / var(--alpha));
+        --h: hsl(270 100% 50% / calc(var(--alpha) / 2));
+        --i: hsl(none 100% 50% / var(--alpha));
+      }
+      "#,
+      indoc! { r#"
+        .foo {
+          --a: hsla(270, 100%, 50%, var(--alpha));
+          --b: hsl(var(--x) 0 0);
+          --c: hsl(0 var(--x) 0);
+          --d: hsl(0 0 var(--x));
+          --e: hsl(var(--x) 0 0 / var(--alpha));
+          --f: hsl(0 var(--x) 0 / var(--alpha));
+          --g: hsl(0 0 var(--x) / var(--alpha));
+          --h: hsla(270, 100%, 50%, calc(var(--alpha) / 2));
+          --i: hsl(none 100% 50% / var(--alpha));
+        }
+      "#},
+      Browsers {
+        safari: Some(11 << 16),
+        ..Browsers::default()
+      },
+    );
+
+    prefix_test(
+      r#"
+      .foo {
+        --a: hsl(270 100% 50% / var(--alpha));
+        --b: hsl(var(--x) 0 0);
+        --c: hsl(0 var(--x) 0);
+        --d: hsl(0 0 var(--x));
+        --e: hsl(var(--x) 0 0 / var(--alpha));
+        --f: hsl(0 var(--x) 0 / var(--alpha));
+        --g: hsl(0 0 var(--x) / var(--alpha));
+        --h: hsl(270 100% 50% / calc(var(--alpha) / 2));
+        --i: hsl(none 100% 50% / var(--alpha));
+      }
+      "#,
+      indoc! { r#"
+        .foo {
+          --a: hsl(270 100% 50% / var(--alpha));
+          --b: hsl(var(--x) 0 0);
+          --c: hsl(0 var(--x) 0);
+          --d: hsl(0 0 var(--x));
+          --e: hsl(var(--x) 0 0 / var(--alpha));
+          --f: hsl(0 var(--x) 0 / var(--alpha));
+          --g: hsl(0 0 var(--x) / var(--alpha));
+          --h: hsl(270 100% 50% / calc(var(--alpha) / 2));
+          --i: hsl(none 100% 50% / var(--alpha));
+        }
+      "#},
+      Browsers {
+        safari: Some(13 << 16),
+        ..Browsers::default()
+      },
+    );
+
+    test(
+      r#"
+      .foo {
+        --a: rgb(50% 50% 50% / calc(100% / 2));
+        --b: hsl(calc(360deg / 2) 50% 50%);
+        --c: oklab(40.101% calc(0.1 + 0.2) 0.0453);
+        --d: color(display-p3 0.43313 0.50108 calc(0.1 + 0.2));
+        --e: rgb(calc(255 / 2), calc(255 / 2), calc(255 / 2));
+      }
+      "#,
+      indoc! { r#"
+        .foo {
+          --a: #80808080;
+          --b: #40bfbf;
+          --c: oklab(40.101% .3 .0453);
+          --d: color(display-p3 .43313 .50108 .3);
+          --e: gray;
+        }
+      "#},
     );
   }
 
@@ -16346,7 +17240,6 @@ mod tests {
     );
 
     let stylesheet = StyleSheet::parse(
-      "test.css",
       r#"
         .grid {
           grid-template-areas: "foo";
@@ -16507,7 +17400,7 @@ mod tests {
       }
     "#};
 
-    let stylesheet = StyleSheet::parse("test.css", &source, ParserOptions::default()).unwrap();
+    let stylesheet = StyleSheet::parse(&source, ParserOptions::default()).unwrap();
     let res = stylesheet
       .to_css(PrinterOptions {
         pseudo_classes: Some(PseudoClasses {
@@ -16534,9 +17427,9 @@ mod tests {
     "#};
 
     let stylesheet = StyleSheet::parse(
-      "test.css",
       &source,
       ParserOptions {
+        filename: "test.css".into(),
         css_modules: Some(Default::default()),
         ..ParserOptions::default()
       },
@@ -16620,7 +17513,7 @@ mod tests {
       }
     "#};
 
-    let mut stylesheet = StyleSheet::parse("test.css", &source, ParserOptions::default()).unwrap();
+    let mut stylesheet = StyleSheet::parse(&source, ParserOptions::default()).unwrap();
     stylesheet
       .minify(MinifyOptions {
         unused_symbols: vec!["bar", "other_id", "fade", "circles"]
@@ -16650,7 +17543,6 @@ mod tests {
     "#};
 
     let mut stylesheet = StyleSheet::parse(
-      "test.css",
       &source,
       ParserOptions {
         nesting: true,
@@ -16704,7 +17596,6 @@ mod tests {
     "#};
 
     let mut stylesheet = StyleSheet::parse(
-      "test.css",
       &source,
       ParserOptions {
         nesting: true,
@@ -16758,7 +17649,6 @@ mod tests {
     "#};
 
     let mut stylesheet = StyleSheet::parse(
-      "test.css",
       &source,
       ParserOptions {
         nesting: true,
@@ -17072,12 +17962,58 @@ mod tests {
         .foo {
           -webkit-mask-image: -webkit-gradient(linear, 0 0, 0 100%, from(#ff0f0e), to(#7773ff));
           -webkit-mask-image: -webkit-linear-gradient(#ff0f0e, #7773ff);
+          -webkit-mask-image: linear-gradient(#ff0f0e, #7773ff);
           mask-image: linear-gradient(#ff0f0e, #7773ff);
+          -webkit-mask-image: linear-gradient(lch(56.208% 136.76 46.312), lch(51% 135.366 301.364));
           mask-image: linear-gradient(lch(56.208% 136.76 46.312), lch(51% 135.366 301.364));
         }
       "#},
       Browsers {
         chrome: Some(8 << 16),
+        ..Browsers::default()
+      },
+    );
+
+    prefix_test(
+      ".foo { mask-image: linear-gradient(lch(56.208% 136.76 46.312), lch(51% 135.366 301.364)) }",
+      indoc! { r#"
+        .foo {
+          -webkit-mask-image: linear-gradient(#ff0f0e, #7773ff);
+          mask-image: linear-gradient(#ff0f0e, #7773ff);
+          -webkit-mask-image: linear-gradient(lch(56.208% 136.76 46.312), lch(51% 135.366 301.364));
+          mask-image: linear-gradient(lch(56.208% 136.76 46.312), lch(51% 135.366 301.364));
+        }
+      "#},
+      Browsers {
+        chrome: Some(95 << 16),
+        ..Browsers::default()
+      },
+    );
+
+    prefix_test(
+      ".foo { mask-image: linear-gradient(red, green) }",
+      indoc! { r#"
+        .foo {
+          -webkit-mask-image: linear-gradient(red, green);
+          mask-image: linear-gradient(red, green);
+        }
+      "#},
+      Browsers {
+        chrome: Some(95 << 16),
+        ..Browsers::default()
+      },
+    );
+
+    prefix_test(
+      ".foo { -webkit-mask-image: url(x.svg); mask-image: url(x.svg); }",
+      indoc! { r#"
+        .foo {
+          -webkit-mask-image: url("x.svg");
+          mask-image: url("x.svg");
+        }
+      "#},
+      Browsers {
+        chrome: Some(95 << 16),
         ..Browsers::default()
       },
     );
@@ -18027,9 +18963,9 @@ mod tests {
 
     fn custom_media_error_test(source: &str, err: Error<MinifyErrorKind>) {
       let mut stylesheet = StyleSheet::parse(
-        "test.css",
         &source,
         ParserOptions {
+          filename: "test.css".into(),
           custom_media: true,
           ..ParserOptions::default()
         },
@@ -18266,7 +19202,14 @@ mod tests {
   #[test]
   fn test_dependencies() {
     fn dep_test(source: &str, expected: &str, deps: Vec<(&str, &str)>) {
-      let mut stylesheet = StyleSheet::parse("test.css", &source, ParserOptions::default()).unwrap();
+      let mut stylesheet = StyleSheet::parse(
+        &source,
+        ParserOptions {
+          filename: "test.css".into(),
+          ..ParserOptions::default()
+        },
+      )
+      .unwrap();
       stylesheet.minify(MinifyOptions::default()).unwrap();
       let res = stylesheet
         .to_css(PrinterOptions {
@@ -18290,7 +19233,7 @@ mod tests {
     }
 
     fn dep_error_test(source: &str, error: PrinterErrorKind) {
-      let stylesheet = StyleSheet::parse("test.css", &source, ParserOptions::default()).unwrap();
+      let stylesheet = StyleSheet::parse(&source, ParserOptions::default()).unwrap();
       let res = stylesheet.to_css(PrinterOptions {
         analyze_dependencies: true,
         ..PrinterOptions::default()
@@ -18303,13 +19246,13 @@ mod tests {
 
     dep_test(
       ".foo { background: image-set('./img12x.png', './img21x.png' 2x)}",
-      ".foo{background:image-set(\"hXFI8W\",\"5TkpBa\" 2x)}",
+      ".foo{background:image-set(\"hXFI8W\" 1x,\"5TkpBa\" 2x)}",
       vec![("./img12x.png", "hXFI8W"), ("./img21x.png", "5TkpBa")],
     );
 
     dep_test(
       ".foo { background: image-set(url(./img12x.png), url('./img21x.png') 2x)}",
-      ".foo{background:image-set(\"hXFI8W\",\"5TkpBa\" 2x)}",
+      ".foo{background:image-set(\"hXFI8W\" 1x,\"5TkpBa\" 2x)}",
       vec![("./img12x.png", "hXFI8W"), ("./img21x.png", "5TkpBa")],
     );
 
@@ -18375,7 +19318,7 @@ mod tests {
 
   #[test]
   fn test_api() {
-    let stylesheet = StyleSheet::parse("test.css", ".foo:hover { color: red }", ParserOptions::default()).unwrap();
+    let stylesheet = StyleSheet::parse(".foo:hover { color: red }", ParserOptions::default()).unwrap();
     match &stylesheet.rules.0[0] {
       CssRule::Style(s) => {
         assert_eq!(&s.selectors.to_string(), ".foo:hover");
@@ -18421,7 +19364,7 @@ mod tests {
         }
       }
     "#};
-    let stylesheet = StyleSheet::parse("test.css", code, ParserOptions::default()).unwrap();
+    let stylesheet = StyleSheet::parse(code, ParserOptions::default()).unwrap();
     if let CssRule::Style(style) = &stylesheet.rules.0[1] {
       let (key, val) = style.property_location(code, 0).unwrap();
       assert_eq!(
@@ -18775,5 +19718,466 @@ mod tests {
     minify_test(".foo { z-index: 999999 }", ".foo{z-index:999999}");
     minify_test(".foo { z-index: 9999999 }", ".foo{z-index:9999999}");
     minify_test(".foo { z-index: -9999999 }", ".foo{z-index:-9999999}");
+  }
+
+  #[test]
+  fn test_input_source_map() {
+    let source = r#".imported {
+      content: "yay, file support!";
+    }
+    
+    .selector {
+      margin: 1em;
+      background-color: #f60;
+    }
+    
+    .selector .nested {
+      margin: 0.5em;
+    }
+    
+    /*# sourceMappingURL=data:application/json;base64,ewoJInZlcnNpb24iOiAzLAoJInNvdXJjZVJvb3QiOiAicm9vdCIsCgkiZmlsZSI6ICJzdGRvdXQiLAoJInNvdXJjZXMiOiBbCgkJInN0ZGluIiwKCQkic2Fzcy9fdmFyaWFibGVzLnNjc3MiLAoJCSJzYXNzL19kZW1vLnNjc3MiCgldLAoJInNvdXJjZXNDb250ZW50IjogWwoJCSJAaW1wb3J0IFwiX3ZhcmlhYmxlc1wiO1xuQGltcG9ydCBcIl9kZW1vXCI7XG5cbi5zZWxlY3RvciB7XG4gIG1hcmdpbjogJHNpemU7XG4gIGJhY2tncm91bmQtY29sb3I6ICRicmFuZENvbG9yO1xuXG4gIC5uZXN0ZWQge1xuICAgIG1hcmdpbjogJHNpemUgLyAyO1xuICB9XG59IiwKCQkiJGJyYW5kQ29sb3I6ICNmNjA7XG4kc2l6ZTogMWVtOyIsCgkJIi5pbXBvcnRlZCB7XG4gIGNvbnRlbnQ6IFwieWF5LCBmaWxlIHN1cHBvcnQhXCI7XG59IgoJXSwKCSJtYXBwaW5ncyI6ICJBRUFBLFNBQVMsQ0FBQztFQUNSLE9BQU8sRUFBRSxvQkFBcUI7Q0FDL0I7O0FGQ0QsU0FBUyxDQUFDO0VBQ1IsTUFBTSxFQ0hELEdBQUc7RURJUixnQkFBZ0IsRUNMTCxJQUFJO0NEVWhCOztBQVBELFNBQVMsQ0FJUCxPQUFPLENBQUM7RUFDTixNQUFNLEVDUEgsS0FBRztDRFFQIiwKCSJuYW1lcyI6IFtdCn0= */"#;
+
+    let mut stylesheet = StyleSheet::parse(&source, ParserOptions::default()).unwrap();
+    stylesheet.minify(MinifyOptions::default()).unwrap();
+    let mut sm = parcel_sourcemap::SourceMap::new("/");
+    stylesheet
+      .to_css(PrinterOptions {
+        source_map: Some(&mut sm),
+        minify: true,
+        ..PrinterOptions::default()
+      })
+      .unwrap();
+    let map = sm.to_json(None).unwrap();
+    assert_eq!(
+      map,
+      r#"{"version":3,"sourceRoot":null,"mappings":"AEAA,uCFGA,2CAAA","sources":["stdin","sass/_variables.scss","sass/_demo.scss"],"sourcesContent":["@import \"_variables\";\n@import \"_demo\";\n\n.selector {\n  margin: $size;\n  background-color: $brandColor;\n\n  .nested {\n    margin: $size / 2;\n  }\n}","$brandColor: #f60;\n$size: 1em;",".imported {\n  content: \"yay, file support!\";\n}"],"names":[]}"#
+    );
+  }
+
+  #[test]
+  fn test_error_recovery() {
+    use std::sync::{Arc, RwLock};
+    let warnings = Some(Arc::new(RwLock::new(Vec::new())));
+    test_with_options(
+      r#"
+      h1(>h1) {
+        color: red;
+      }
+
+      .foo {
+        color: red;
+      }
+
+      .clearfix {
+        *zoom: 1;
+        background: red;
+      }
+
+      @media (hover) {
+        h1(>h1) {
+          color: red;
+        }
+
+        .bar {
+          color: red;
+        }
+      }
+    "#,
+      indoc! { r#"
+      .foo {
+        color: red;
+      }
+
+      .clearfix {
+        background: red;
+      }
+
+      @media (hover) {
+        .bar {
+          color: red;
+        }
+      }
+    "#},
+      ParserOptions {
+        filename: "test.css".into(),
+        error_recovery: true,
+        warnings: warnings.clone(),
+        ..ParserOptions::default()
+      },
+    );
+    let w = warnings.unwrap();
+    let warnings = w.read().unwrap();
+    assert_eq!(
+      *warnings,
+      vec![
+        Error {
+          kind: ParserError::SelectorError(SelectorError::EmptySelector),
+          loc: Some(ErrorLocation {
+            filename: "test.css".into(),
+            line: 1,
+            column: 7
+          })
+        },
+        Error {
+          kind: ParserError::UnexpectedToken(Token::Delim('*')),
+          loc: Some(ErrorLocation {
+            filename: "test.css".into(),
+            line: 10,
+            column: 9
+          })
+        },
+        Error {
+          kind: ParserError::SelectorError(SelectorError::EmptySelector),
+          loc: Some(ErrorLocation {
+            filename: "test.css".into(),
+            line: 15,
+            column: 9
+          })
+        },
+      ]
+    )
+  }
+
+  #[test]
+  fn test_container_queries() {
+    // with name
+    minify_test(
+      r#"
+      @container my-layout (inline-size > 45em) {
+        .foo {
+          color: red;
+        }
+      }
+    "#,
+      "@container my-layout (inline-size>45em){.foo{color:red}}",
+    );
+
+    minify_test(
+      r#"
+      @container my-layout ( not (width > 500px) ) {
+        .foo {
+          color: red;
+        }
+      }
+    "#,
+      "@container my-layout (not (width>500px)){.foo{color:red}}",
+    );
+
+    minify_test(
+      r#"
+      @container my-layout not (width > 500px) {
+        .foo {
+          color: red;
+        }
+      }
+    "#,
+      "@container my-layout not (width>500px){.foo{color:red}}",
+    );
+
+    minify_test(
+      r#"
+      @container not (width > 500px) {
+        .foo {
+          color: red;
+        }
+      }
+    "#,
+      "@container not (width>500px){.foo{color:red}}",
+    );
+
+    minify_test(
+      r#"
+      @container my-layout ((width: 100px) and (not (height: 100px))) {
+        .foo {
+          color: red;
+        }
+      }
+    "#,
+      "@container my-layout ((width:100px) and (not (height:100px))){.foo{color:red}}",
+    );
+
+    minify_test(
+      r#"
+      @container my-layout (width = max(10px, 10em)) {
+        .foo {
+          color: red;
+        }
+      }
+    "#,
+      "@container my-layout (width=max(10px,10em)){.foo{color:red}}",
+    );
+
+    // without name
+    minify_test(
+      r#"
+      @container (inline-size > 45em) {
+        .foo {
+          color: red;
+        }
+      }
+    "#,
+      "@container (inline-size>45em){.foo{color:red}}",
+    );
+
+    minify_test(
+      r#"
+      @container (inline-size > 45em) and (inline-size < 100em) {
+        .foo {
+          color: red;
+        }
+      }
+    "#,
+      "@container (inline-size>45em) and (inline-size<100em){.foo{color:red}}",
+    );
+
+    // calc()
+    minify_test(
+      r#"
+      @container (width > calc(100vw - 50px)) {
+        .foo {
+          color: red;
+        }
+      }
+    "#,
+      "@container (width>calc(100vw - 50px)){.foo{color:red}}",
+    );
+
+    minify_test(
+      r#"
+      @container (calc(100vh - 50px) <= height ) {
+        .foo {
+          color: red;
+        }
+      }
+    "#,
+      "@container (height>=calc(100vh - 50px)){.foo{color:red}}",
+    );
+
+    // merge adjacent
+    minify_test(
+      r#"
+      @container my-layout (inline-size > 45em) {
+        .foo {
+          color: red;
+        }
+      }
+
+      @container my-layout (inline-size > 45em) {
+        .foo {
+          background: yellow;
+        }
+
+        .bar {
+          color: white;
+        }
+      }
+    "#,
+      "@container my-layout (inline-size>45em){.foo{color:red;background:#ff0}.bar{color:#fff}}",
+    );
+
+    minify_test(
+      r#"
+    .foo {
+      container-name: foo bar;
+      container-type: size inline-size;
+    }
+    "#,
+      ".foo{container:foo bar/size}",
+    );
+    minify_test(
+      r#"
+    .foo {
+      container-name: foo bar;
+      container-type: normal;
+    }
+    "#,
+      ".foo{container:foo bar}",
+    );
+    minify_test(
+      ".foo{ container-type: inline-size }",
+      ".foo{container-type:inline-size}",
+    );
+    minify_test(".foo{ container-name: none; }", ".foo{container-name:none}");
+    minify_test(".foo{ container-name: foo; }", ".foo{container-name:foo}");
+    minify_test(".foo{ container: foo / normal; }", ".foo{container:foo}");
+    minify_test(
+      ".foo{ container: foo / inline-size; }",
+      ".foo{container:foo/inline-size}",
+    );
+    minify_test(".foo { width: calc(1cqw + 2cqw) }", ".foo{width:3cqw}");
+    minify_test(".foo { width: calc(1cqh + 2cqh) }", ".foo{width:3cqh}");
+    minify_test(".foo { width: calc(1cqi + 2cqi) }", ".foo{width:3cqi}");
+    minify_test(".foo { width: calc(1cqb + 2cqb) }", ".foo{width:3cqb}");
+    minify_test(".foo { width: calc(1cqmin + 2cqmin) }", ".foo{width:3cqmin}");
+    minify_test(".foo { width: calc(1cqmax + 2cqmax) }", ".foo{width:3cqmax}");
+
+    // Unlike in @media, there is no need to convert the range syntax in @container,
+    // because browsers all support this syntax.
+    prefix_test(
+      r#"
+      @container (width > 100px) {
+        .foo { padding: 5px; }
+      }
+      "#,
+      indoc! { r#"
+        @container (width > 100px) {
+          .foo {
+            padding: 5px;
+          }
+        }
+      "#},
+      Browsers {
+        chrome: Some(105 << 16),
+        ..Browsers::default()
+      },
+    );
+    prefix_test(
+      r#"
+      @container (min-width: 100px) {
+        .foo { padding: 5px; }
+      }
+      "#,
+      indoc! { r#"
+        @container (min-width: 100px) {
+          .foo {
+            padding: 5px;
+          }
+        }
+      "#},
+      Browsers {
+        chrome: Some(105 << 16),
+        ..Browsers::default()
+      },
+    );
+
+    // Disallow 'none', 'not', 'and', 'or' as a `<container-name>`
+    // https://github.com/w3c/csswg-drafts/issues/7203#issuecomment-1144257312
+    // https://chromium-review.googlesource.com/c/chromium/src/+/3698402
+    error_test(
+      "@container none (width < 100vw) {}",
+      ParserError::UnexpectedToken(crate::properties::custom::Token::Ident("none".into())),
+    );
+
+    error_test(
+      "@container and (width < 100vw) {}",
+      ParserError::UnexpectedToken(crate::properties::custom::Token::Ident("and".into())),
+    );
+
+    error_test(
+      "@container or (width < 100vw) {}",
+      ParserError::UnexpectedToken(crate::properties::custom::Token::Ident("or".into())),
+    );
+
+    // Disallow CSS wide keywords as a `<container-name>`
+    error_test(
+      "@container revert-layer (width < 100vw) {}",
+      ParserError::UnexpectedToken(crate::properties::custom::Token::Ident("revert-layer".into())),
+    );
+
+    error_test(
+      "@container initial (width < 100vw) {}",
+      ParserError::UnexpectedToken(crate::properties::custom::Token::Ident("initial".into())),
+    );
+
+    // <ident> contains spaces
+    // https://github.com/web-platform-tests/wpt/blob/39f0da08fbbe33d0582a35749b6dbf8bd067a52d/css/css-contain/container-queries/at-container-parsing.html#L160-L178
+    error_test(
+      "@container foo bar (width < 100vw) {}",
+      ParserError::UnexpectedToken(crate::properties::custom::Token::Ident("bar".into())),
+    );
+  }
+
+  #[test]
+  fn test_unknown_at_rules() {
+    minify_test("@foo;", "@foo;");
+    minify_test("@foo bar;", "@foo bar;");
+    minify_test("@foo (bar: baz);", "@foo (bar: baz);");
+    test(
+      r#"@foo test {
+      div {
+        color: red;
+      }
+    }"#,
+      indoc! {r#"
+      @foo test {
+        div { color: red; }
+      }
+      "#},
+    );
+    minify_test(
+      r#"@foo test {
+      div {
+        color: red;
+      }
+    }"#,
+      "@foo test{div { color: red; }}",
+    );
+    minify_test(
+      r#"@foo test {
+        foo: bar;
+      }"#,
+      "@foo test{foo: bar;}",
+    );
+    test(
+      r#"@foo {
+        foo: bar;
+      }"#,
+      indoc! {r#"
+      @foo {
+        foo: bar;
+      }
+      "#},
+    );
+    minify_test(
+      r#"@foo {
+        foo: bar;
+      }"#,
+      "@foo{foo: bar;}",
+    );
+  }
+
+  #[test]
+  fn test_resolution() {
+    prefix_test(
+      r#"
+      @media (resolution: 1dppx) {
+        body {
+          background: red;
+        }
+      }
+      "#,
+      indoc! { r#"
+      @media (resolution: 1dppx) {
+        body {
+          background: red;
+        }
+      }
+      "#},
+      Browsers {
+        chrome: Some(50 << 16),
+        ..Browsers::default()
+      },
+    );
+
+    prefix_test(
+      r#"
+      @media (resolution: 1dppx) {
+        body {
+          background: red;
+        }
+      }
+      "#,
+      indoc! { r#"
+      @media (resolution: 1x) {
+        body {
+          background: red;
+        }
+      }
+      "#},
+      Browsers {
+        chrome: Some(95 << 16),
+        ..Browsers::default()
+      },
+    );
   }
 }

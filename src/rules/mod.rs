@@ -36,6 +36,7 @@
 
 #![deny(missing_docs)]
 
+pub mod container;
 pub mod counter_style;
 pub mod custom_media;
 pub mod document;
@@ -51,6 +52,7 @@ pub mod page;
 pub mod property;
 pub mod style;
 pub mod supports;
+pub mod unknown;
 pub mod viewport;
 
 use self::font_palette_values::FontPaletteValuesRule;
@@ -69,6 +71,7 @@ use crate::targets::Browsers;
 use crate::traits::ToCss;
 use crate::values::string::CowArcStr;
 use crate::vendor_prefix::VendorPrefix;
+use container::ContainerRule;
 use counter_style::CounterStyleRule;
 use cssparser::{parse_one_rule, ParseError, Parser, ParserInput};
 use custom_media::CustomMediaRule;
@@ -84,6 +87,7 @@ use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use style::StyleRule;
 use supports::SupportsRule;
+use unknown::UnknownAtRule;
 use viewport::ViewportRule;
 
 pub(crate) trait ToCssWithContext<'a, 'i> {
@@ -157,8 +161,12 @@ pub enum CssRule<'i> {
   LayerBlock(LayerBlockRule<'i>),
   /// A `@property` rule.
   Property(PropertyRule<'i>),
+  /// A `@container` rule.
+  Container(ContainerRule<'i>),
   /// A placeholder for a rule that was removed.
   Ignored,
+  /// An unknown at-rule.
+  Unknown(UnknownAtRule<'i>),
 }
 
 impl<'a, 'i> ToCssWithContext<'a, 'i> for CssRule<'i> {
@@ -188,6 +196,8 @@ impl<'a, 'i> ToCssWithContext<'a, 'i> for CssRule<'i> {
       CssRule::LayerStatement(layer) => layer.to_css(dest),
       CssRule::LayerBlock(layer) => layer.to_css(dest),
       CssRule::Property(property) => property.to_css(dest),
+      CssRule::Container(container) => container.to_css_with_context(dest, context),
+      CssRule::Unknown(unknown) => unknown.to_css(dest),
       CssRule::Ignored => Ok(()),
     }
   }
@@ -197,7 +207,7 @@ impl<'i> CssRule<'i> {
   /// Parse a single rule.
   pub fn parse<'t>(
     input: &mut Parser<'i, 't>,
-    options: &ParserOptions<'i>,
+    options: &ParserOptions<'_, 'i>,
   ) -> Result<Self, ParseError<'i, ParserError<'i>>> {
     let (_, rule) = parse_one_rule(input, &mut TopLevelRuleParser::new(&options))?;
     Ok(rule)
@@ -206,7 +216,7 @@ impl<'i> CssRule<'i> {
   /// Parse a single rule from a string.
   pub fn parse_string(
     input: &'i str,
-    options: ParserOptions<'i>,
+    options: ParserOptions<'_, 'i>,
   ) -> Result<Self, ParseError<'i, ParserError<'i>>> {
     let mut input = ParserInput::new(input);
     let mut parser = Parser::new(&mut input);
@@ -291,13 +301,54 @@ impl<'i> CssRuleList<'i> {
           }
         }
         CssRule::Media(media) => {
+          if let Some(CssRule::Media(last_rule)) = rules.last_mut() {
+            if last_rule.query == media.query {
+              last_rule.rules.0.extend(media.rules.0.drain(..));
+              last_rule.minify(context, parent_is_unused)?;
+              continue;
+            }
+          }
+
           if media.minify(context, parent_is_unused)? {
             continue;
           }
         }
         CssRule::Supports(supports) => {
+          if let Some(CssRule::Supports(last_rule)) = rules.last_mut() {
+            if last_rule.condition == supports.condition {
+              last_rule.rules.0.extend(supports.rules.0.drain(..));
+              last_rule.minify(context, parent_is_unused)?;
+              continue;
+            }
+          }
+
           supports.minify(context, parent_is_unused)?;
           if supports.rules.0.is_empty() {
+            continue;
+          }
+        }
+        CssRule::Container(container) => {
+          if let Some(CssRule::Container(last_rule)) = rules.last_mut() {
+            if last_rule.name == container.name && last_rule.condition == container.condition {
+              last_rule.rules.0.extend(container.rules.0.drain(..));
+              last_rule.minify(context, parent_is_unused)?;
+              continue;
+            }
+          }
+
+          if container.minify(context, parent_is_unused)? {
+            continue;
+          }
+        }
+        CssRule::LayerBlock(layer) => {
+          if let Some(CssRule::LayerBlock(last_rule)) = rules.last_mut() {
+            if last_rule.name == layer.name {
+              last_rule.rules.0.extend(layer.rules.0.drain(..));
+              last_rule.minify(context, parent_is_unused)?;
+              continue;
+            }
+          }
+          if layer.minify(context, parent_is_unused)? {
             continue;
           }
         }
@@ -314,60 +365,33 @@ impl<'i> CssRuleList<'i> {
             }
           }
 
+          // Attempt to merge the new rule with the last rule we added.
+          let mut merged = false;
           if let Some(CssRule::Style(last_style_rule)) = rules.last_mut() {
-            // Merge declarations if the selectors are equivalent, and both are compatible with all targets.
-            if style.selectors == last_style_rule.selectors
-              && style.is_compatible(*context.targets)
-              && last_style_rule.is_compatible(*context.targets)
-              && style.rules.0.is_empty()
-              && last_style_rule.rules.0.is_empty()
-            {
-              last_style_rule
-                .declarations
-                .declarations
-                .extend(style.declarations.declarations.drain(..));
-              last_style_rule
-                .declarations
-                .important_declarations
-                .extend(style.declarations.important_declarations.drain(..));
-              last_style_rule.declarations.minify(
-                context.handler,
-                context.important_handler,
-                context.handler_context,
-              );
-              rules.extend(context.handler_context.get_supports_rules(&style));
-              continue;
-            } else if style.declarations == last_style_rule.declarations
-              && style.rules.0.is_empty()
-              && last_style_rule.rules.0.is_empty()
-            {
-              // Append the selectors to the last rule if the declarations are the same, and all selectors are compatible.
-              if style.is_compatible(*context.targets) && last_style_rule.is_compatible(*context.targets) {
-                last_style_rule.selectors.0.extend(style.selectors.0.drain(..));
-                continue;
-              }
-
-              // If both selectors are potentially vendor prefixable, and they are
-              // equivalent minus prefixes, add the prefix to the last rule.
-              if !style.vendor_prefix.is_empty()
-                && !last_style_rule.vendor_prefix.is_empty()
-                && is_equivalent(&style.selectors, &last_style_rule.selectors)
-              {
-                // If the new rule is unprefixed, replace the prefixes of the last rule.
-                // Otherwise, add the new prefix.
-                if style.vendor_prefix.contains(VendorPrefix::None) {
-                  last_style_rule.vendor_prefix = style.vendor_prefix;
-                } else {
-                  last_style_rule.vendor_prefix |= style.vendor_prefix;
+            if merge_style_rules(style, last_style_rule, context) {
+              // If that was successful, then the last rule has been updated to include the
+              // selectors/declarations of the new rule. This might mean that we can merge it
+              // with the previous rule, so continue trying while we have style rules available.
+              while rules.len() >= 2 {
+                let len = rules.len();
+                let (a, b) = rules.split_at_mut(len - 1);
+                if let (CssRule::Style(last), CssRule::Style(prev)) = (&mut b[0], &mut a[len - 2]) {
+                  if merge_style_rules(last, prev, context) {
+                    // If we were able to merge the last rule into the previous one, remove the last.
+                    rules.pop();
+                    continue;
+                  }
                 }
-                continue;
+                // If we didn't see a style rule, or were unable to merge, stop.
+                break;
               }
+              merged = true;
             }
           }
 
           let supports = context.handler_context.get_supports_rules(&style);
           let logical = context.handler_context.get_logical_rules(&style);
-          if !style.is_empty() {
+          if !merged && !style.is_empty() {
             rules.push(rule);
           }
 
@@ -418,6 +442,60 @@ impl<'i> CssRuleList<'i> {
     self.0 = rules;
     Ok(())
   }
+}
+
+fn merge_style_rules<'i>(
+  style: &mut StyleRule<'i>,
+  last_style_rule: &mut StyleRule<'i>,
+  context: &mut MinifyContext<'_, 'i>,
+) -> bool {
+  // Merge declarations if the selectors are equivalent, and both are compatible with all targets.
+  if style.selectors == last_style_rule.selectors
+    && style.is_compatible(*context.targets)
+    && last_style_rule.is_compatible(*context.targets)
+    && style.rules.0.is_empty()
+    && last_style_rule.rules.0.is_empty()
+  {
+    last_style_rule
+      .declarations
+      .declarations
+      .extend(style.declarations.declarations.drain(..));
+    last_style_rule
+      .declarations
+      .important_declarations
+      .extend(style.declarations.important_declarations.drain(..));
+    last_style_rule
+      .declarations
+      .minify(context.handler, context.important_handler, context.handler_context);
+    return true;
+  } else if style.declarations == last_style_rule.declarations
+    && style.rules.0.is_empty()
+    && last_style_rule.rules.0.is_empty()
+  {
+    // Append the selectors to the last rule if the declarations are the same, and all selectors are compatible.
+    if style.is_compatible(*context.targets) && last_style_rule.is_compatible(*context.targets) {
+      last_style_rule.selectors.0.extend(style.selectors.0.drain(..));
+      return true;
+    }
+
+    // If both selectors are potentially vendor prefixable, and they are
+    // equivalent minus prefixes, add the prefix to the last rule.
+    if !style.vendor_prefix.is_empty()
+      && !last_style_rule.vendor_prefix.is_empty()
+      && !last_style_rule.vendor_prefix.contains(style.vendor_prefix)
+      && is_equivalent(&style.selectors, &last_style_rule.selectors)
+    {
+      // If the new rule is unprefixed, replace the prefixes of the last rule.
+      // Otherwise, add the new prefix.
+      if style.vendor_prefix.contains(VendorPrefix::None) {
+        last_style_rule.vendor_prefix = style.vendor_prefix;
+      } else {
+        last_style_rule.vendor_prefix |= style.vendor_prefix;
+      }
+      return true;
+    }
+  }
+  false
 }
 
 impl<'i> ToCss for CssRuleList<'i> {

@@ -97,6 +97,7 @@ pub mod border;
 pub mod border_image;
 pub mod border_radius;
 pub mod box_shadow;
+pub mod contain;
 pub mod css_modules;
 pub mod custom;
 pub mod display;
@@ -142,6 +143,7 @@ use border::*;
 use border_image::*;
 use border_radius::*;
 use box_shadow::*;
+use contain::*;
 use css_modules::*;
 use cssparser::*;
 use custom::*;
@@ -1069,6 +1071,9 @@ define_properties! {
   "text-emphasis-position": TextEmphasisPosition(TextEmphasisPosition, VendorPrefix) / WebKit,
   "text-shadow": TextShadow(SmallVec<[TextShadow; 1]>),
 
+  // https://www.w3.org/TR/css-break-3/
+  "box-decoration-break": BoxDecorationBreak(BoxDecorationBreak, VendorPrefix) / WebKit,
+
   // https://www.w3.org/TR/2021/WD-css-ui-4-20210316
   "resize": Resize(Resize),
   "cursor": Cursor(Cursor<'i>),
@@ -1151,6 +1156,11 @@ define_properties! {
 
   // https://drafts.csswg.org/css2/
   "z-index": ZIndex(position::ZIndex),
+
+  // https://drafts.csswg.org/css-contain-3/
+  "container-type": ContainerType(ContainerType),
+  "container-name": ContainerName(ContainerNameList<'i>),
+  "container": Container(Container<'i>) shorthand: true,
 }
 
 impl<'i, T: smallvec::Array<Item = V>, V: Parse<'i>> Parse<'i> for SmallVec<T> {

@@ -679,8 +679,12 @@ impl<'i> PropertyHandler<'i> for BorderHandler<'i> {
         self.flush_unparsed(&val, dest, context);
       }
       _ => {
+        if self.border_image_handler.will_flush(property) {
+          self.flush(dest, context);
+        }
+
         return self.border_image_handler.handle_property(property, dest, context)
-          || self.border_radius_handler.handle_property(property, dest, context)
+          || self.border_radius_handler.handle_property(property, dest, context);
       }
     }
 
@@ -703,6 +707,7 @@ impl<'i> BorderHandler<'i> {
     self.has_any = false;
 
     let logical_supported = context.is_supported(Feature::LogicalBorders);
+    let logical_shorthand_supported = context.is_supported(Feature::LogicalBorderShorthand);
     macro_rules! logical_prop {
       ($ltr: ident, $ltr_key: ident, $rtl: ident, $rtl_key: ident, $val: expr) => {{
         context.add_logical_rule(Property::$ltr($val.clone()), Property::$rtl($val.clone()));
@@ -1112,7 +1117,7 @@ impl<'i> BorderHandler<'i> {
 
           if $is_logical && $block_start == $block_end && $block_start.is_valid() {
             if logical_supported {
-              if (context.is_supported(Feature::LogicalBorderShorthand)) {
+              if logical_shorthand_supported {
                 prop!(BorderBlock => $block_start.to_border());
               } else {
                 prop!(BorderBlockStart => $block_start.to_border());
@@ -1123,7 +1128,7 @@ impl<'i> BorderHandler<'i> {
               prop!(BorderBottom => $block_start.to_border());
             }
           } else {
-            if $is_logical && logical_supported && !$block_start.is_valid() && !$block_end.is_valid() {
+            if $is_logical && logical_shorthand_supported && !$block_start.is_valid() && !$block_end.is_valid() {
               logical_shorthand!(BorderBlockStyle, style, $block_start, $block_end);
               logical_shorthand!(BorderBlockWidth, width, $block_start, $block_end);
               logical_shorthand!(BorderBlockColor, color, $block_start, $block_end);
@@ -1135,7 +1140,7 @@ impl<'i> BorderHandler<'i> {
 
           if $is_logical && $inline_start == $inline_end && $inline_start.is_valid() {
             if logical_supported {
-              if (context.is_supported(Feature::LogicalBorderShorthand)) {
+              if logical_shorthand_supported {
                 prop!(BorderInline => $inline_start.to_border());
               } else {
                 prop!(BorderInlineStart => $inline_start.to_border());
@@ -1146,10 +1151,26 @@ impl<'i> BorderHandler<'i> {
               prop!(BorderRight => $inline_start.to_border());
             }
           } else {
-            if $is_logical && logical_supported && !$inline_start.is_valid() && !$inline_end.is_valid() {
-              logical_shorthand!(BorderInlineStyle, style, $inline_start, $inline_end);
-              logical_shorthand!(BorderInlineWidth, width, $inline_start, $inline_end);
-              logical_shorthand!(BorderInlineColor, color, $inline_start, $inline_end);
+            if $is_logical && !$inline_start.is_valid() && !$inline_end.is_valid() {
+              if logical_shorthand_supported {
+                logical_shorthand!(BorderInlineStyle, style, $inline_start, $inline_end);
+                logical_shorthand!(BorderInlineWidth, width, $inline_start, $inline_end);
+                logical_shorthand!(BorderInlineColor, color, $inline_start, $inline_end);
+              } else {
+                // If both values of an inline logical property are equal, then we can just convert them to physical properties.
+                macro_rules! inline_prop {
+                  ($key: ident, $left: ident, $right: ident) => {
+                    if $inline_start.$key.is_some() && $inline_start.$key == $inline_end.$key {
+                      prop!($left => std::mem::take(&mut $inline_start.$key).unwrap());
+                      prop!($right => std::mem::take(&mut $inline_end.$key).unwrap());
+                    }
+                  }
+                }
+
+                inline_prop!(style, BorderLeftStyle, BorderRightStyle);
+                inline_prop!(width, BorderLeftWidth, BorderRightWidth);
+                inline_prop!(color, BorderLeftColor, BorderRightColor);
+              }
             }
 
             side!($inline_start, $inline_start_prop, $inline_start_width, $inline_start_style, $inline_start_color);

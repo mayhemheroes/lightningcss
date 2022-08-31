@@ -3,6 +3,7 @@
 use super::color::ColorFallbackKind;
 use super::gradient::*;
 use super::resolution::Resolution;
+use crate::compat;
 use crate::dependencies::{Dependency, UrlDependency};
 use crate::error::{ParserError, PrinterError};
 use crate::prefixes::{is_webkit_gradient, Feature};
@@ -98,6 +99,30 @@ impl<'i> Image<'i> {
       Image::Gradient(grad) => Image::Gradient(Box::new(grad.get_fallback(kind))),
       _ => self.clone(),
     }
+  }
+
+  pub(crate) fn should_preserve_fallback(&self, fallback: &Option<Image>, targets: Option<Browsers>) -> bool {
+    if let (Some(fallback), Some(targets)) = (&fallback, targets) {
+      return !compat::Feature::ImageSet.is_compatible(targets)
+        && matches!(self, Image::ImageSet(..))
+        && !matches!(fallback, Image::ImageSet(..));
+    }
+
+    false
+  }
+
+  pub(crate) fn should_preserve_fallbacks(
+    images: &SmallVec<[Image; 1]>,
+    fallback: Option<&SmallVec<[Image; 1]>>,
+    targets: Option<Browsers>,
+  ) -> bool {
+    if let (Some(fallback), Some(targets)) = (&fallback, targets) {
+      return !compat::Feature::ImageSet.is_compatible(targets)
+        && images.iter().any(|x| matches!(x, Image::ImageSet(..)))
+        && !fallback.iter().any(|x| matches!(x, Image::ImageSet(..)));
+    }
+
+    false
   }
 }
 
@@ -453,10 +478,17 @@ impl<'i> ImageSetOption<'i> {
       _ => self.image.to_css(dest)?,
     }
 
-    if self.resolution != Resolution::Dppx(1.0) {
-      dest.write_char(' ')?;
-      self.resolution.to_css(dest)?;
-    }
+    // TODO: Throwing an error when `self.resolution = Resolution::Dppx(0.0)`
+    // TODO: -webkit-image-set() does not support `<image()> | <image-set()> |
+    // <cross-fade()> | <element()> | <gradient>` and `type(<string>)`.
+    dest.write_char(' ')?;
+
+    // Safari only supports the x resolution unit in image-set().
+    // In other places, x was added as an alias later.
+    // Temporarily ignore the targets while printing here.
+    let targets = std::mem::take(&mut dest.targets);
+    self.resolution.to_css(dest)?;
+    dest.targets = targets;
 
     if let Some(file_type) = &self.file_type {
       dest.write_str(" type(")?;

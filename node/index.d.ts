@@ -9,6 +9,8 @@ export interface TransformOptions {
   minify?: boolean,
   /** Whether to output a source map. */
   sourceMap?: boolean,
+  /** An input source map to extend. */
+  inputSourceMap?: string,
   /** The browser targets for the generated code. */
   targets?: Targets,
   /** Whether to enable various draft syntax. */
@@ -32,7 +34,13 @@ export interface TransformOptions {
    * to be unused. These will be removed during minification. Note that these are not
    * selectors but individual names (without any . or # prefixes).
    */
-  unusedSymbols?: string[]
+  unusedSymbols?: string[],
+  /**
+   * Whether to ignore invalid rules and declarations rather than erroring.
+   * When enabled, warnings are returned, and the invalid rule or declaration is
+   * omitted from the output code.
+   */
+  errorRecovery?: boolean
 }
 
 export type BundleOptions = Omit<TransformOptions, 'code'>;
@@ -62,7 +70,16 @@ export interface TransformResult {
   /** CSS module references, if `dashedIdents` is enabled. */
   references: CSSModuleReferences,
   /** `@import` and `url()` dependencies, if enabled. */
-  dependencies: Dependency[] | void
+  dependencies: Dependency[] | void,
+  /** Warnings that occurred during compilation. */
+  warnings: Warning[]
+}
+
+export interface Warning {
+  message: string,
+  type: string,
+  value?: any,
+  loc: ErrorLocation
 }
 
 export interface CSSModulesConfig {
@@ -153,6 +170,10 @@ export interface Location {
   column: number
 }
 
+export interface ErrorLocation extends Location {
+  filename: string
+}
+
 /**
  * Compiles a CSS file, including optionally minifying and lowering syntax to the given
  * targets. A source map may also be generated, but this is not enabled by default.
@@ -172,14 +193,22 @@ export interface TransformAttributeOptions {
    * that can be replaced with the final urls later (after bundling).
    * Dependencies are returned as part of the result.
    */
-  analyzeDependencies?: boolean
+  analyzeDependencies?: boolean,
+  /**
+   * Whether to ignore invalid rules and declarations rather than erroring.
+   * When enabled, warnings are returned, and the invalid rule or declaration is
+   * omitted from the output code.
+   */
+  errorRecovery?: boolean
 }
 
 export interface TransformAttributeResult {
   /** The transformed code. */
   code: Buffer,
   /** `@import` and `url()` dependencies, if enabled. */
-  dependencies: Dependency[] | void
+  dependencies: Dependency[] | void,
+  /** Warnings that occurred during compilation. */
+  warnings: Warning[]
 }
 
 /**

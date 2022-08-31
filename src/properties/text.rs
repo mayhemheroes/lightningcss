@@ -11,7 +11,7 @@ use crate::macros::{define_shorthand, enum_property};
 use crate::prefixes::Feature;
 use crate::printer::Printer;
 use crate::targets::Browsers;
-use crate::traits::{FallbackValues, Parse, PropertyHandler, Shorthand, ToCss};
+use crate::traits::{FallbackValues, Parse, PropertyHandler, Shorthand, ToCss, Zero};
 use crate::values::calc::{Calc, MathFunction};
 use crate::values::color::{ColorFallbackKind, CssColor};
 use crate::values::length::{Length, LengthPercentage, LengthValue};
@@ -906,6 +906,22 @@ impl<'i> Parse<'i> for TextEmphasisPosition {
         .unwrap_or(TextEmphasisPositionHorizontal::Right);
       Ok(TextEmphasisPosition { horizontal, vertical })
     }
+  }
+}
+
+enum_property! {
+  /// A value for the [box-decoration-break](https://www.w3.org/TR/css-break-3/#break-decoration) property.
+  pub enum BoxDecorationBreak {
+    /// The element is rendered with no breaks present, and then sliced by the breaks afterward.
+    Slice,
+    /// Each box fragment is independently wrapped with the border, padding, and margin.
+    Clone,
+  }
+}
+
+impl Default for BoxDecorationBreak {
+  fn default() -> Self {
+    BoxDecorationBreak::Slice
   }
 }
 

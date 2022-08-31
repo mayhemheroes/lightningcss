@@ -384,12 +384,22 @@ impl<'i> PropertyHandler<'i> for BorderImageHandler<'i> {
     }
 
     match property {
-      BorderImageSource(val) => property!(source, val),
+      BorderImageSource(val) => {
+        if val.should_preserve_fallback(&self.source, self.targets) {
+          self.flush(dest);
+        }
+
+        property!(source, val);
+      }
       BorderImageSlice(val) => property!(slice, val),
       BorderImageWidth(val) => property!(width, val),
       BorderImageOutset(val) => property!(outset, val),
       BorderImageRepeat(val) => property!(repeat, val),
       BorderImage(val, vp) => {
+        if val.source.should_preserve_fallback(&self.source, self.targets) {
+          self.flush(dest);
+        }
+
         self.set_border_image(val);
         self.vendor_prefix |= *vp;
         self.has_any = true;
@@ -434,6 +444,16 @@ impl<'i> BorderImageHandler<'i> {
     self.width = Some(border_image.width.clone());
     self.outset = Some(border_image.outset.clone());
     self.repeat = Some(border_image.repeat.clone());
+  }
+
+  pub fn will_flush(&self, property: &Property<'i>) -> bool {
+    use Property::*;
+    match property {
+      BorderImageSource(_) | BorderImageSlice(_) | BorderImageWidth(_) | BorderImageOutset(_)
+      | BorderImageRepeat(_) => self.vendor_prefix != VendorPrefix::None,
+      Unparsed(val) => is_border_image_property(&val.property_id),
+      _ => false,
+    }
   }
 
   fn flush(&mut self, dest: &mut DeclarationList<'i>) {

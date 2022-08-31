@@ -1,9 +1,11 @@
 //! CSS number values.
 
+use super::angle::impl_try_from_angle;
 use super::calc::Calc;
 use crate::error::{ParserError, PrinterError};
 use crate::printer::Printer;
-use crate::traits::{Parse, ToCss};
+use crate::traits::private::AddInternal;
+use crate::traits::{Map, Op, Parse, Sign, ToCss, Zero};
 use cssparser::*;
 
 /// A CSS [`<number>`](https://www.w3.org/TR/css-values-4/#numbers) value.
@@ -18,7 +20,7 @@ impl<'i> Parse<'i> for CSSNumber {
       Ok(Calc::Value(v)) => return Ok(*v),
       Ok(Calc::Number(n)) => return Ok(n),
       // Numbers are always compatible, so they will always compute to a value.
-      Ok(_) => unreachable!(),
+      Ok(_) => return Err(input.new_custom_error(ParserError::InvalidValue)),
       _ => {}
     }
 
@@ -64,6 +66,49 @@ impl std::convert::From<Calc<CSSNumber>> for CSSNumber {
   }
 }
 
+impl AddInternal for CSSNumber {
+  fn add(self, other: Self) -> Self {
+    self + other
+  }
+}
+
+impl Op for CSSNumber {
+  fn op<F: FnOnce(f32, f32) -> f32>(&self, to: &Self, op: F) -> Self {
+    op(*self, *to)
+  }
+
+  fn op_to<T, F: FnOnce(f32, f32) -> T>(&self, rhs: &Self, op: F) -> T {
+    op(*self, *rhs)
+  }
+}
+
+impl Map for CSSNumber {
+  fn map<F: FnOnce(f32) -> f32>(&self, op: F) -> Self {
+    op(*self)
+  }
+}
+
+impl Sign for CSSNumber {
+  fn sign(&self) -> f32 {
+    if *self == 0.0 {
+      return if f32::is_sign_positive(*self) { 0.0 } else { -0.0 };
+    }
+    self.signum()
+  }
+}
+
+impl Zero for CSSNumber {
+  fn zero() -> Self {
+    0.0
+  }
+
+  fn is_zero(&self) -> bool {
+    *self == 0.0
+  }
+}
+
+impl_try_from_angle!(CSSNumber);
+
 /// A CSS [`<integer>`](https://www.w3.org/TR/css-values-4/#integers) value.
 pub type CSSInteger = i32;
 
@@ -82,5 +127,15 @@ impl ToCss for CSSInteger {
   {
     cssparser::ToCss::to_css(self, dest)?;
     Ok(())
+  }
+}
+
+impl Zero for CSSInteger {
+  fn zero() -> Self {
+    0
+  }
+
+  fn is_zero(&self) -> bool {
+    *self == 0
   }
 }

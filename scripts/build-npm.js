@@ -2,15 +2,37 @@ const fs = require('fs');
 const pkg = require('../package.json');
 
 const dir = `${__dirname}/..`;
+
+// Add `libc` fields only to platforms that have libc(Standard C library).
 const triples = [
-  'x86_64-apple-darwin',
-  'x86_64-unknown-linux-gnu',
-  'x86_64-pc-windows-msvc',
-  'aarch64-apple-darwin',
-  'aarch64-unknown-linux-gnu',
-  'armv7-unknown-linux-gnueabihf',
-  'aarch64-unknown-linux-musl',
-  'x86_64-unknown-linux-musl'
+  {
+    name: 'x86_64-apple-darwin',
+  },
+  {
+    name: 'x86_64-unknown-linux-gnu',
+    libc: 'glibc',
+  },
+  {
+    name: 'x86_64-pc-windows-msvc',
+  },
+  {
+    name: 'aarch64-apple-darwin',
+  },
+  {
+    name: 'aarch64-unknown-linux-gnu',
+    libc: 'glibc',
+  },
+  {
+    name: 'armv7-unknown-linux-gnueabihf',
+  },
+  {
+    name: 'aarch64-unknown-linux-musl',
+    libc: 'musl',
+  },
+  {
+    name: 'x86_64-unknown-linux-musl',
+    libc: 'musl',
+  },
 ];
 const cpuToNodeArch = {
   x86_64: 'x64',
@@ -33,7 +55,10 @@ try {
 } catch (err) {}
 
 for (let triple of triples) {
-  let [cpu, , os, abi] = triple.split('-');
+  // Add the libc field to package.json to avoid downloading both
+  // `gnu` and `musl` packages in Linux.
+  const libc = triple.libc;
+  let [cpu, , os, abi] = triple.name.split('-');
   cpu = cpuToNodeArch[cpu] || cpu;
   os = sysToNodePlatform[os] || os;
 
@@ -42,8 +67,8 @@ for (let triple of triples) {
     t += '-' + abi;
   }
 
-  buildNode(triple, cpu, os, t);
-  buildCLI(triple, cpu, os, t);
+  buildNode(triple.name, cpu, os, libc, t);
+  buildCLI(triple.name, cpu, os, libc, t);
 }
 
 pkg.optionalDependencies = optionalDependencies;
@@ -56,6 +81,7 @@ cliPkg.bin = {
 };
 delete cliPkg.main;
 delete cliPkg.napi;
+delete cliPkg.exports;
 delete cliPkg.devDependencies;
 delete cliPkg.targets;
 delete cliPkg.types;
@@ -68,15 +94,19 @@ cliPkg.scripts = {
 fs.writeFileSync(`${dir}/cli/package.json`, JSON.stringify(cliPkg, false, 2) + '\n');
 fs.copyFileSync(`${dir}/README.md`, `${dir}/cli/README.md`);
 
-function buildNode(triple, cpu, os, t) {
+function buildNode(triple, cpu, os, libc, t) {
   let name = `parcel-css.${t}.node`;
 
   let pkg2 = {...pkg};
   pkg2.name += '-' + t;
   pkg2.os = [os];
   pkg2.cpu = [cpu];
+  if (libc) {
+    pkg2.libc = [libc];
+  }
   pkg2.main = name;
   pkg2.files = [name];
+  delete pkg2.exports;
   delete pkg2.napi;
   delete pkg2.devDependencies;
   delete pkg2.dependencies;
@@ -95,14 +125,18 @@ function buildNode(triple, cpu, os, t) {
   fs.writeFileSync(`${dir}/npm/node-${t}/README.md`, `This is the ${triple} build of @parcel/css. See https://github.com/parcel-bundler/parcel-css for details.`);
 }
 
-function buildCLI(triple, cpu, os, t) {
+function buildCLI(triple, cpu, os, libc, t) {
   let binary = os === 'win32' ? 'parcel_css.exe' : 'parcel_css';
   let pkg2 = {...pkg};
   pkg2.name += '-cli-' + t;
   pkg2.os = [os];
   pkg2.cpu = [cpu];
   pkg2.files = [binary];
+  if (libc) {
+    pkg2.libc = [libc];
+  }
   delete pkg2.main;
+  delete pkg2.exports;
   delete pkg2.napi;
   delete pkg2.devDependencies;
   delete pkg2.dependencies;

@@ -9,8 +9,8 @@ use serde::Serialize;
 use std::fmt;
 
 /// An error with a source location.
-#[derive(Debug, PartialEq, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, PartialEq, Clone, Serialize)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
 pub struct Error<T> {
   /// The type of error that occurred.
   pub kind: T,
@@ -31,8 +31,8 @@ impl<T: fmt::Display> fmt::Display for Error<T> {
 impl<T: fmt::Display + fmt::Debug> std::error::Error for Error<T> {}
 
 /// A line and column location within a source file.
-#[derive(Debug, PartialEq, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, PartialEq, Clone, Serialize)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
 pub struct ErrorLocation {
   /// The filename in which the error occurred.
   pub filename: String,
@@ -60,7 +60,7 @@ impl fmt::Display for ErrorLocation {
 }
 
 /// A parser error.
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 #[serde(tag = "type", content = "value")]
 pub enum ParserError<'i> {
   /// An at rule body was invalid.
@@ -89,6 +89,8 @@ pub enum ParserError<'i> {
   UnexpectedNamespaceRule,
   /// An unexpected token was encountered.
   UnexpectedToken(#[serde(skip)] Token<'i>),
+  /// Maximum nesting depth was reached.
+  MaximumNestingDepth,
 }
 
 impl<'i> fmt::Display for ParserError<'i> {
@@ -114,6 +116,7 @@ impl<'i> fmt::Display for ParserError<'i> {
         "@namespaces rules must precede all rules aside from @charset, @import, and @layer statements"
       ),
       UnexpectedToken(token) => write!(f, "Unexpected token {:?}", token),
+      MaximumNestingDepth => write!(f, "Overflowed the maximum nesting depth"),
     }
   }
 }
@@ -158,7 +161,7 @@ impl<'i> ParserError<'i> {
 }
 
 /// A selector parsing error.
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Clone)]
 #[serde(tag = "type", content = "value")]
 pub enum SelectorError<'i> {
   /// An unexpected token was found in an attribute selector.
@@ -217,7 +220,7 @@ impl<'i> fmt::Display for SelectorError<'i> {
       InvalidPseudoClassAfterWebKitScrollbar => write!(f, "Invalid pseudo class after ::-webkit-scrollbar pseudo element"),
       InvalidPseudoClassBeforeWebKitScrollbar => write!(f, "Pseudo class must be prefixed by a ::-webkit-scrollbar pseudo element"),
       InvalidQualNameInAttr(token) => write!(f, "Invalid qualified name in attribute selector: {:?}", token),
-      MissingNestingPrefix => write!(f, "A nesting selector (&) is required as a prefix of each selector in a nested style rule"),
+      MissingNestingPrefix => write!(f, "A nested rule must start with a nesting selector (&) as prefix of each selector, or start with @nest"),
       MissingNestingSelector => write!(f, "A nesting selector (&) is required in each selector of a @nest rule"),
       NoQualifiedNameInAttributeSelector(token) => write!(f, "No qualified name in attribute selector: {:?}.", token),
       PseudoElementExpectedIdent(token) => write!(f, "Invalid token in pseudo element: {:?}", token),

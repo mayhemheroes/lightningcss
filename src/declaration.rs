@@ -14,6 +14,7 @@ use crate::properties::{
   animation::AnimationHandler,
   background::BackgroundHandler,
   border::BorderHandler,
+  contain::ContainerHandler,
   display::DisplayHandler,
   flex::FlexHandler,
   font::FontHandler,
@@ -54,7 +55,7 @@ impl<'i> DeclarationBlock<'i> {
   /// Parses a declaration block from CSS syntax.
   pub fn parse<'a, 'o, 't>(
     input: &mut Parser<'i, 't>,
-    options: &'a ParserOptions<'o>,
+    options: &'a ParserOptions<'o, 'i>,
   ) -> Result<Self, ParseError<'i, ParserError<'i>>> {
     let mut important_declarations = DeclarationList::new();
     let mut declarations = DeclarationList::new();
@@ -68,6 +69,10 @@ impl<'i> DeclarationBlock<'i> {
     );
     while let Some(res) = parser.next() {
       if let Err((err, _)) = res {
+        if options.error_recovery {
+          options.warn(err);
+          continue;
+        }
         return Err(err);
       }
     }
@@ -81,7 +86,7 @@ impl<'i> DeclarationBlock<'i> {
   /// Parses a declaration block from a string.
   pub fn parse_string<'o>(
     input: &'i str,
-    options: ParserOptions<'o>,
+    options: ParserOptions<'o, 'i>,
   ) -> Result<Self, ParseError<'i, ParserError<'i>>> {
     let mut input = ParserInput::new(input);
     let mut parser = Parser::new(&mut input);
@@ -377,7 +382,7 @@ impl<'i> DeclarationBlock<'i> {
 struct PropertyDeclarationParser<'a, 'o, 'i> {
   important_declarations: &'a mut Vec<Property<'i>>,
   declarations: &'a mut Vec<Property<'i>>,
-  options: &'a ParserOptions<'o>,
+  options: &'a ParserOptions<'o, 'i>,
 }
 
 /// Parse a declaration within {} block: `color: blue`
@@ -457,6 +462,7 @@ pub(crate) struct DeclarationHandler<'i> {
   transform: TransformHandler,
   box_shadow: BoxShadowHandler,
   mask: MaskHandler<'i>,
+  container: ContainerHandler<'i>,
   fallback: FallbackHandler,
   prefix: PrefixHandler,
   decls: DeclarationList<'i>,
@@ -488,6 +494,7 @@ impl<'i> DeclarationHandler<'i> {
       transform: TransformHandler::new(targets),
       box_shadow: BoxShadowHandler::new(targets),
       mask: MaskHandler::default(),
+      container: ContainerHandler::default(),
       fallback: FallbackHandler::new(targets),
       prefix: PrefixHandler::new(targets),
       decls: DeclarationList::new(),
@@ -528,6 +535,7 @@ impl<'i> DeclarationHandler<'i> {
       || self.transform.handle_property(property, &mut self.decls, context)
       || self.box_shadow.handle_property(property, &mut self.decls, context)
       || self.mask.handle_property(property, &mut self.decls, context)
+      || self.container.handle_property(property, &mut self.decls, context)
       || self.fallback.handle_property(property, &mut self.decls, context)
       || self.prefix.handle_property(property, &mut self.decls, context)
   }
@@ -556,6 +564,7 @@ impl<'i> DeclarationHandler<'i> {
     self.transform.finalize(&mut self.decls, context);
     self.box_shadow.finalize(&mut self.decls, context);
     self.mask.finalize(&mut self.decls, context);
+    self.container.finalize(&mut self.decls, context);
     self.fallback.finalize(&mut self.decls, context);
     self.prefix.finalize(&mut self.decls, context);
   }

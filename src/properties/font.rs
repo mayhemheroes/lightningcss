@@ -1,5 +1,7 @@
 //! CSS properties related to fonts.
 
+use std::collections::HashSet;
+
 use super::{Property, PropertyId};
 use crate::compat::Feature;
 use crate::context::PropertyHandlerContext;
@@ -312,6 +314,7 @@ enum_property! {
   ///
   /// See [FontFamily](FontFamily).
   #[allow(missing_docs)]
+  #[derive(Eq, Hash)]
   pub enum GenericFontFamily {
     "serif": Serif,
     "sans-serif": SansSerif,
@@ -345,7 +348,7 @@ enum_property! {
 }
 
 /// A value for the [font-family](https://www.w3.org/TR/css-fonts-4/#font-family-prop) property.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(
   feature = "serde",
   derive(serde::Serialize, serde::Deserialize),
@@ -841,7 +844,7 @@ impl<'i> PropertyHandler<'i> for FontHandler<'i> {
 
     self.has_any = false;
 
-    let family = compatible_font_family(
+    let mut family = compatible_font_family(
       std::mem::take(&mut self.family),
       context.is_supported(Feature::FontFamilySystemUi),
     );
@@ -851,6 +854,14 @@ impl<'i> PropertyHandler<'i> for FontHandler<'i> {
     let stretch = std::mem::take(&mut self.stretch);
     let line_height = std::mem::take(&mut self.line_height);
     let variant_caps = std::mem::take(&mut self.variant_caps);
+
+    if let Some(family) = &mut family {
+      if family.len() > 1 {
+        // Dedupe.
+        let mut seen = HashSet::new();
+        family.retain(|f| seen.insert(f.clone()));
+      }
+    }
 
     if family.is_some()
       && size.is_some()
@@ -915,9 +926,9 @@ impl<'i> PropertyHandler<'i> for FontHandler<'i> {
 const SYSTEM_UI: FontFamily = FontFamily::Generic(GenericFontFamily::SystemUI);
 
 const DEFAULT_SYSTEM_FONTS: &[&str] = &[
-  // #1: Supported as the -apple-system value (only on Mac)
-  "AppleSystem",
-  // #2: Supported as the 'BlinkMacSystemFont' value (only on Mac)
+  // #1: Supported as the '-apple-system' value (macOS, Safari >= 9.2 < 11, Firefox >= 43)
+  "-apple-system",
+  // #2: Supported as the 'BlinkMacSystemFont' value (macOS, Chrome < 56)
   "BlinkMacSystemFont",
   "Segoe UI",  // Windows >= Vista
   "Roboto",    // Android >= 4
@@ -932,7 +943,6 @@ const DEFAULT_SYSTEM_FONTS: &[&str] = &[
 /// This list is an attempt at providing that support
 #[inline]
 fn compatible_font_family(mut family: Option<Vec<FontFamily>>, is_supported: bool) -> Option<Vec<FontFamily>> {
-
   if is_supported {
     return family;
   }

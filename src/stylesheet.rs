@@ -15,6 +15,7 @@ use crate::rules::{CssRule, CssRuleList, MinifyContext};
 use crate::targets::Browsers;
 use crate::traits::ToCss;
 use cssparser::{Parser, ParserInput, RuleListParser};
+use parcel_sourcemap::SourceMap;
 use std::collections::{HashMap, HashSet};
 
 pub use crate::parser::ParserOptions;
@@ -36,7 +37,6 @@ pub use crate::printer::PseudoClasses;
 ///
 /// // Parse a style sheet from a string.
 /// let mut stylesheet = StyleSheet::parse(
-///   "test.css",
 ///   r#"
 ///   .foo {
 ///     color: red;
@@ -65,9 +65,11 @@ pub struct StyleSheet<'i, 'o> {
   /// A list of file names for all source files included within the style sheet.
   /// Sources are referenced by index in the `loc` property of each rule.
   pub sources: Vec<String>,
+  /// The source map URL extracted from the original style sheet.
+  pub source_map_url: Option<String>,
   #[cfg_attr(feature = "serde", serde(skip))]
   /// The options the style sheet was originally parsed with.
-  options: ParserOptions<'o>,
+  options: ParserOptions<'o, 'i>,
 }
 
 /// Options for the `minify` function of a [StyleSheet](StyleSheet)
@@ -83,6 +85,7 @@ pub struct MinifyOptions {
 
 /// A result returned from `to_css`, including the serialize CSS
 /// and other metadata depending on the input options.
+#[derive(Debug)]
 pub struct ToCssResult {
   /// Serialized CSS code.
   pub code: String,
@@ -99,17 +102,17 @@ pub struct ToCssResult {
 
 impl<'i, 'o> StyleSheet<'i, 'o> {
   /// Creates a new style sheet with the given source filenames and rules.
-  pub fn new(sources: Vec<String>, rules: CssRuleList<'i>, options: ParserOptions<'o>) -> StyleSheet<'i, 'o> {
+  pub fn new(sources: Vec<String>, rules: CssRuleList<'i>, options: ParserOptions<'o, 'i>) -> StyleSheet<'i, 'o> {
     StyleSheet {
       sources,
+      source_map_url: None,
       rules,
       options,
     }
   }
 
   /// Parse a style sheet from a string.
-  pub fn parse(filename: &str, code: &'i str, options: ParserOptions<'o>) -> Result<Self, Error<ParserError<'i>>> {
-    let filename = String::from(filename);
+  pub fn parse(code: &'i str, options: ParserOptions<'o, 'i>) -> Result<Self, Error<ParserError<'i>>> {
     let mut input = ParserInput::new(&code);
     let mut parser = Parser::new(&mut input);
     let rule_list_parser = RuleListParser::new_for_stylesheet(&mut parser, TopLevelRuleParser::new(&options));
@@ -119,17 +122,31 @@ impl<'i, 'o> StyleSheet<'i, 'o> {
       let rule = match rule {
         Ok((_, CssRule::Ignored)) => continue,
         Ok((_, rule)) => rule,
-        Err((e, _)) => return Err(Error::from(e, filename)),
+        Err((e, _)) => {
+          if options.error_recovery {
+            options.warn(e);
+            continue;
+          }
+
+          return Err(Error::from(e, options.filename.clone()));
+        }
       };
 
       rules.push(rule)
     }
 
     Ok(StyleSheet {
-      sources: vec![filename],
+      sources: vec![options.filename.clone()],
+      source_map_url: parser.current_source_map_url().map(|s| s.to_owned()),
       rules: CssRuleList(rules),
       options,
     })
+  }
+
+  /// Returns the inline source map associated with the style sheet.
+  pub fn source_map(&self) -> Option<SourceMap> {
+    let source_map_url = self.source_map_url.as_ref()?;
+    SourceMap::from_data_url("/", source_map_url).ok()
   }
 
   /// Minify and transform the style sheet for the provided browser targets.
@@ -205,6 +222,13 @@ impl<'i, 'o> StyleSheet<'i, 'o> {
     } else {
       self.rules.to_css(&mut printer)?;
       printer.newline()?;
+
+      if let Some(sm) = printer.source_map {
+        if let Some(mut input_sm) = self.source_map() {
+          let _ = sm.extends(&mut input_sm);
+        }
+      }
+
       Ok(ToCssResult {
         dependencies: printer.dependencies,
         code: dest,
@@ -229,7 +253,8 @@ impl<'i, 'o> StyleSheet<'i, 'o> {
 ///
 /// // Parse a style sheet from a string.
 /// let mut style = StyleAttribute::parse(
-///   "color: yellow; font-family: 'Helvetica';"
+///   "color: yellow; font-family: 'Helvetica';",
+///   ParserOptions::default()
 /// ).unwrap();
 ///
 /// // Minify the stylesheet.
@@ -246,10 +271,12 @@ pub struct StyleAttribute<'i> {
 
 impl<'i> StyleAttribute<'i> {
   /// Parses a style attribute from a string.
-  pub fn parse(code: &'i str) -> Result<StyleAttribute, Error<ParserError<'i>>> {
+  pub fn parse(
+    code: &'i str,
+    options: ParserOptions<'_, 'i>,
+  ) -> Result<StyleAttribute<'i>, Error<ParserError<'i>>> {
     let mut input = ParserInput::new(&code);
     let mut parser = Parser::new(&mut input);
-    let options = ParserOptions::default();
     Ok(StyleAttribute {
       declarations: DeclarationBlock::parse(&mut parser, &options).map_err(|e| Error::from(e, "".into()))?,
     })

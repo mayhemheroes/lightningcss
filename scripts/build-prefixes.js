@@ -16,6 +16,7 @@ const BROWSER_MAPPING = {
   bb: null,
   kaios: null,
   op_mini: null,
+  oculus: null,
 };
 
 const MDN_BROWSER_MAPPING = {
@@ -24,7 +25,8 @@ const MDN_BROWSER_MAPPING = {
   opera_android: 'opera',
   safari_ios: 'ios_saf',
   samsunginternet_android: 'samsung',
-  webview_android: 'android'
+  webview_android: 'android',
+  oculus: null,
 };
 
 // Caniuse data for clip-path is incorrect.
@@ -56,8 +58,6 @@ prefixes['any-pseudo'] = {
     })
 }
 
-console.log(prefixes['any-pseudo'])
-
 let flexSpec = {};
 let oldGradient = {};
 let p = new Map();
@@ -69,7 +69,7 @@ for (let prop in prefixes) {
       continue;
     }
     let prefix = browsers[name].prefix_exceptions?.[version] || browsers[name].prefix;
-  
+
     // https://github.com/postcss/autoprefixer/blob/main/lib/hacks/backdrop-filter.js#L11
     if (prefix === 'ms' && prop === 'backdrop-filter') {
       prefix = 'webkit';
@@ -225,8 +225,11 @@ let mdnFeatures = {
   labColors: mdn.css.types.color.lab.__compat.support,
   oklabColors: {},
   colorFunction: mdn.css.types.color.color.__compat.support,
+  spaceSeparatedColorFunction: mdn.css.types.color.rgb.space_separated_parameters.__compat.support,
   textDecorationThicknessPercent: mdn.css.properties['text-decoration-thickness'].percentage.__compat.support,
   textDecorationThicknessShorthand: mdn.css.properties['text-decoration']['text-decoration-thickness'].__compat.support,
+  cue: mdn.css.selectors.cue.__compat.support,
+  cueFunction: mdn.css.selectors.cue.selector_argument.__compat.support,
   anyPseudo: Object.fromEntries(
     Object.entries(mdn.css.selectors.is.__compat.support)
       .map(([key, value]) => {
@@ -242,7 +245,9 @@ let mdnFeatures = {
           return [key, {version_added: false}];
         }
       })
-  )
+  ),
+  imageSet: mdn.css.types.image['image-set'].__compat.support,
+  xResolutionUnit: mdn.css.types.resolution.x.__compat.support
 };
 
 for (let feature in mdnFeatures) {
