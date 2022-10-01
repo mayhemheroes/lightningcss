@@ -4,7 +4,7 @@ use libfuzzer_sys::fuzz_target;
 fuzz_target!(|data: &[u8]| {
     match std::str::from_utf8(data) {
         Ok(s) => {
-            use parcel_css::stylesheet::{
+            use lightningcss::stylesheet::{
                 StyleSheet, ParserOptions, MinifyOptions, PrinterOptions
             };
 
