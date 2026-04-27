@@ -47,20 +47,13 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: Start analysis of Parser
-        uses: ForAllSecure/mcode-action@v1
+        uses: forallsecure/mcode-action@long-runs
         with:
           mayhem-token: ${{ secrets.MAYHEM_TOKEN }}
           args: --file mayhemfiles/Mayhemfile_Parser --image ${{ steps.meta.outputs.tags }}
-          sarif-output: sarif
 
       - name: Start analysis of Filename
-        uses: ForAllSecure/mcode-action@v1
+        uses: forallsecure/mcode-action@long-runs
         with:
           mayhem-token: ${{ secrets.MAYHEM_TOKEN }}
           args: --file mayhemfiles/Mayhemfile_Filename --image ${{ steps.meta.outputs.tags }}
-          sarif-output: sarif
-
-      - name: Upload SARIF file(s)
-        uses: github/codeql-action/upload-sarif@v1
-        with:
-          sarif_file: sarif
